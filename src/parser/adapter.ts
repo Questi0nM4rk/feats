@@ -75,6 +75,10 @@ function compiledStepToKeyword(
 function compiledStepToDataTable(compiledStep: messages.PickleStep): DataTable | undefined {
   const dt = compiledStep.argument?.dataTable;
   if (dt === undefined) return undefined;
+  return mapPickleDataTable(dt);
+}
+
+function mapPickleDataTable(dt: messages.PickleTable): DataTable {
   const rows = dt.rows.map((row) => row.cells.map((cell) => cell.value));
   return createDataTable(rows);
 }

@@ -52,10 +52,12 @@ function diffObjects(
 
     if (isRecord(expectedVal) && isRecord(actualVal)) {
       errors.push(...diffObjects(expectedVal, actualVal, fullPath, subset));
-    } else if (JSON.stringify(actualVal) !== JSON.stringify(expectedVal)) {
-      errors.push(
-        `${fullPath}: expected ${JSON.stringify(expectedVal)}, got ${JSON.stringify(actualVal)}`,
-      );
+    } else {
+      const expectedStr = JSON.stringify(expectedVal);
+      const actualStr = JSON.stringify(actualVal);
+      if (actualStr !== expectedStr) {
+        errors.push(`${fullPath}: expected ${expectedStr}, got ${actualStr}`);
+      }
     }
   }
 
