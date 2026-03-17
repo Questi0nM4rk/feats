@@ -11,6 +11,7 @@
     "noImplicitOverride": true,
     "verbatimModuleSyntax": true,
     "noFallthroughCasesInSwitch": true,
+    "declaration": true,
     "paths": {
       "@/*": ["./src/*"]
     }
