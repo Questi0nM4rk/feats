@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { AstBuilder, compile, GherkinClassicTokenMatcher, Parser } from "@cucumber/gherkin";
 import type * as messages from "@cucumber/messages";
 import { IdGenerator } from "@cucumber/messages";
@@ -204,7 +205,7 @@ export async function loadFeatures(
   const features: Feature[] = [];
 
   for await (const file of glob.scan({ cwd, absolute: false })) {
-    const absolutePath = `${cwd}/${file}`;
+    const absolutePath = join(cwd, file);
     const source = await Bun.file(absolutePath).text();
     features.push(parseFeature(source, file));
   }
