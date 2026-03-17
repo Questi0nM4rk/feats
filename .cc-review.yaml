@@ -8,19 +8,19 @@ languages:
 ignore_paths:
   - "docs/**"
   - "**/*.md"
-  - "dist/**"
-  - "node_modules/**"
 
 instructions: |
-  BDD/Gherkin test framework for Bun runtime.
-  Uses @cucumber/gherkin + @cucumber/cucumber-expressions for parsing.
-  TypeScript with Bun-native APIs — no Node.js compat layers.
-  Exports two entry points: feats.ts (main) and bun-plugin.ts (Bun plugin).
-  No `any` types — use `unknown` + type guards at boundaries.
+  TypeScript CLI tool using Commander.js + Bun runtime + Zod schemas.
+  Pipeline + plugin architecture with DI via PipelineContext.
+  Generated configs carry a sha256 hash header — never edit them directly.
+  All lint suppressions go through .guardrails-exceptions.toml, not inline.
+  No `any` types — use `unknown` + Zod at boundaries.
   No `!` non-null assertions — handle undefined explicitly.
-  Biome for linting.
+  Max 200 lines per file. Bun >= 1.2.0 runtime.
 
-known_patterns: []
+known_patterns:
+  - "FakeFileManager/FakeCommandRunner/FakeConsole are test fakes, not production code"
+  - "lefthookGenerator.generate() intentionally throws — callers use generateLefthookConfig()"
 
 slop_detection: true
 memory: true
