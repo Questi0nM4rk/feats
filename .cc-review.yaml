@@ -1,0 +1,26 @@
+version: 1
+mode: standard
+auto_review: true
+
+languages:
+  - typescript
+
+ignore_paths:
+  - "docs/**"
+  - "**/*.md"
+
+instructions: |
+  TypeScript CLI tool using Commander.js + Bun runtime + Zod schemas.
+  Pipeline + plugin architecture with DI via PipelineContext.
+  Generated configs carry a sha256 hash header — never edit them directly.
+  All lint suppressions go through .guardrails-exceptions.toml, not inline.
+  No `any` types — use `unknown` + Zod at boundaries.
+  No `!` non-null assertions — handle undefined explicitly.
+  Max 200 lines per file. Bun >= 1.2.0 runtime.
+
+known_patterns:
+  - "FakeFileManager/FakeCommandRunner/FakeConsole are test fakes, not production code"
+  - "lefthookGenerator.generate() intentionally throws — callers use generateLefthookConfig()"
+
+slop_detection: true
+memory: true

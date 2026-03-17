@@ -1,0 +1,177 @@
+name: cc-review
+
+on:
+  pull_request:
+    types: [opened, labeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review"
+        required: true
+      mode:
+        description: "Review mode"
+        required: false
+        default: "standard"
+        type: choice
+        options:
+          - standard
+          - strict
+          - bug-hunt
+          - simplify
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.action == 'opened' && !contains(github.event.pull_request.user.login, '[bot]')) ||
+      (github.event.action == 'labeled' && contains(fromJson('["bug-hunt","simplify","strict"]'), github.event.label.name))
+    timeout-minutes: 20
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REVIEWER_APP_ID }}
+          private-key: ${{ secrets.REVIEWER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Fetch bot intelligence
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          git clone --depth 1 https://x-access-token:${GH_TOKEN}@github.com/Questi0nM4rk/cc-review.git /tmp/cc-review-bot
+          mkdir -p .claude
+          cp -r /tmp/cc-review-bot/.claude/commands .claude/
+          cp -r /tmp/cc-review-bot/.claude/agents .claude/
+          cp -r /tmp/cc-review-bot/.claude/skills .claude/
+          cp -r /tmp/cc-review-bot/.claude/hooks .claude/
+          cp /tmp/cc-review-bot/.claude/CLAUDE.md .claude/CLAUDE.md
+          cp /tmp/cc-review-bot/.claude/settings.json .claude/settings.json
+
+      - name: Fetch memory branch
+        run: git fetch origin claude-reviewer/memory:claude-reviewer/memory 2>/dev/null || true
+
+      - name: Determine PR number and review mode
+        id: config
+        env:
+          INPUT_PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          PR_NUMBER_FROM_EVENT: ${{ github.event.pull_request.number }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+          EVENT_ACTION: ${{ github.event.action }}
+          LABEL_NAME: ${{ github.event.label.name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "pr_number=$INPUT_PR_NUMBER" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr_number=$PR_NUMBER_FROM_EVENT" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            MODE="$INPUT_MODE"
+          elif [ "$EVENT_ACTION" = "labeled" ]; then
+            MODE="$LABEL_NAME"
+          else
+            MODE=$(grep -oP '(?<=^mode:\s).*' .cc-review.yaml 2>/dev/null | tr -d ' "' || echo "standard")
+            [ -z "$MODE" ] && MODE="standard"
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+          if [ "$EVENT_ACTION" = "opened" ]; then
+            AUTO=$(grep -oP '(?<=^auto_review:\s).*' .cc-review.yaml 2>/dev/null | tr -d ' "' || echo "true")
+            if [ "$AUTO" = "false" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Pre-fetch PR diff
+        if: steps.config.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_NUMBER="${{ steps.config.outputs.pr_number }}"
+          # Get PR metadata
+          gh pr view "$PR_NUMBER" --json title,body,author,baseRefName,headRefName,files > /tmp/pr-meta.json
+
+          # Try gh pr diff first, fallback to local git diff for large PRs
+          if ! gh pr diff "$PR_NUMBER" > /tmp/pr-diff.txt 2>/dev/null; then
+            echo "PR diff too large for API, using local git diff..."
+            BASE=$(jq -r '.baseRefName' /tmp/pr-meta.json)
+            HEAD=$(jq -r '.headRefName' /tmp/pr-meta.json)
+            git fetch origin "$HEAD" 2>/dev/null || true
+            git diff "origin/$BASE...origin/$HEAD" > /tmp/pr-diff.txt 2>/dev/null || \
+              git diff "origin/$BASE...FETCH_HEAD" > /tmp/pr-diff.txt 2>/dev/null || \
+              echo "Could not compute diff" > /tmp/pr-diff.txt
+          fi
+
+          DIFF_LINES=$(wc -l < /tmp/pr-diff.txt)
+          FILE_COUNT=$(jq '.files | length' /tmp/pr-meta.json)
+          echo "Diff: ${DIFF_LINES} lines, ${FILE_COUNT} files"
+
+      - name: Install Claude Code
+        if: steps.config.outputs.skip != 'true'
+        run: |
+          npm install -g tsx
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run review
+        if: steps.config.outputs.skip != 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_NUMBER="${{ steps.config.outputs.pr_number }}"
+          REPO="$GITHUB_REPOSITORY"
+          MODE="${{ steps.config.outputs.mode }}"
+
+          case "$MODE" in
+            strict)
+              COMMAND="review-pr"
+              EXTRA="STRICT RULES: No severity levels. Every finding = required change. No dead code, no duplicates, modular approach required."
+              ;;
+            bug-hunt)
+              COMMAND="bug-hunt"
+              EXTRA=""
+              ;;
+            simplify)
+              COMMAND="simplify-review"
+              EXTRA=""
+              ;;
+            *)
+              COMMAND="review-pr"
+              EXTRA=""
+              ;;
+          esac
+
+          cat > /tmp/prompt.txt <<EOF
+          You are the cc-review bot for ${REPO}, reviewing PR #${PR_NUMBER}.
+          Follow .claude/commands/${COMMAND}.md for the review methodology.
+          The .cc-review.yaml has project-specific config.
+
+          IMPORTANT: The PR diff and metadata are pre-fetched for you:
+          - /tmp/pr-meta.json — PR title, body, author, files list
+          - /tmp/pr-diff.txt — the full diff
+
+          Read these files instead of calling gh pr view/diff. This saves turns.
+          Do NOT call gh pr diff — it may fail on large PRs. Use /tmp/pr-diff.txt.
+
+          The PR number is: ${PR_NUMBER}
+          ${EXTRA}
+          EOF
+
+          cat /tmp/prompt.txt | claude -p \
+            --max-turns 75 \
+            --model claude-sonnet-4-6 \
+            --allowedTools "Bash(gh:*),Bash(git:*),Bash(cat:*),Bash(npx:*),Bash(tsx:*),Bash(jq:*),Bash(for:*),Read,Glob,Grep,Agent"
