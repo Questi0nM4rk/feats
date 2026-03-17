@@ -6,5 +6,8 @@ import type { World } from "@/state/world";
 export async function executeStep(world: World, step: ParsedStep): Promise<void> {
   const registry = getRegistry();
   const match = matchStep(registry.getAll(), step.text);
-  await match.definition.callback(world, ...match.args);
+  const extraArgs: unknown[] = [];
+  if (step.docString !== undefined) extraArgs.push(step.docString);
+  if (step.dataTable !== undefined) extraArgs.push(step.dataTable);
+  await match.definition.callback(world, ...match.args, ...extraArgs);
 }

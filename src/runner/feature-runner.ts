@@ -22,7 +22,10 @@ async function runSteps(
 ): Promise<void> {
   for (const step of steps) {
     const match = matchStep(definitions, step.text);
-    await match.definition.callback(world, ...match.args);
+    const extraArgs: unknown[] = [];
+    if (step.docString !== undefined) extraArgs.push(step.docString);
+    if (step.dataTable !== undefined) extraArgs.push(step.dataTable);
+    await match.definition.callback(world, ...match.args, ...extraArgs);
   }
 }
 
