@@ -33,16 +33,16 @@ describe("generateStepSnippet", () => {
     expect(snippet).toStartWith('Then("the output should contain success",');
   });
 
-  test("And keyword resolves to Given", () => {
+  test("And keyword resolves to Step (neutral)", () => {
     const step = makeStep("And", "another precondition");
     const snippet = generateStepSnippet(step);
-    expect(snippet).toStartWith('Given("another precondition",');
+    expect(snippet).toStartWith('Step("another precondition",');
   });
 
-  test("But keyword resolves to Given", () => {
+  test("But keyword resolves to Step (neutral)", () => {
     const step = makeStep("But", "not this case");
     const snippet = generateStepSnippet(step);
-    expect(snippet).toStartWith('Given("not this case",');
+    expect(snippet).toStartWith('Step("not this case",');
   });
 
   test("snippet contains TODO comment and throw", () => {

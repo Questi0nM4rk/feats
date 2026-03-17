@@ -11,8 +11,6 @@ import type { World, WorldFactory } from "@/state/world";
 export interface RunOptions {
   worldFactory?: WorldFactory;
   tagFilter?: string;
-  seed?: number;
-  fixtureDir?: string;
 }
 
 async function runSteps(
@@ -52,23 +50,31 @@ export function runFeatures(features: readonly Feature[], opts?: RunOptions): vo
         test(scenario.name, async () => {
           const world = worldFactory();
 
-          for (const hook of beforeHooks) {
-            if (hook.tagFilter === undefined || matchesTagFilter(scenarioTags, hook.tagFilter)) {
-              await hook.callback(world);
-            }
-          }
+          let beforeError: unknown;
 
           try {
+            for (const hook of beforeHooks) {
+              if (hook.tagFilter === undefined || matchesTagFilter(scenarioTags, hook.tagFilter)) {
+                await hook.callback(world);
+              }
+            }
+
             if (feature.background !== undefined) {
               await runSteps(world, feature.background.steps, definitions);
             }
             await runSteps(world, scenario.steps, definitions);
+          } catch (err: unknown) {
+            beforeError = err;
           } finally {
             for (const hook of afterHooks) {
               if (hook.tagFilter === undefined || matchesTagFilter(scenarioTags, hook.tagFilter)) {
                 await hook.callback(world);
               }
             }
+          }
+
+          if (beforeError !== undefined) {
+            throw beforeError;
           }
         });
       }

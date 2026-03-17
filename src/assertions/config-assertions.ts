@@ -28,6 +28,47 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function diffValues(expected: unknown, actual: unknown, path: string, subset: boolean): string[] {
+  if (isRecord(expected) && isRecord(actual)) {
+    return diffObjects(expected, actual, path, subset);
+  }
+
+  if (Array.isArray(expected) && Array.isArray(actual)) {
+    return diffArrays(expected, actual, path, subset);
+  }
+
+  const expectedStr = JSON.stringify(expected);
+  const actualStr = JSON.stringify(actual);
+  if (actualStr !== expectedStr) {
+    return [`${path}: expected ${expectedStr}, got ${actualStr}`];
+  }
+  return [];
+}
+
+function diffArrays(
+  expected: unknown[],
+  actual: unknown[],
+  path: string,
+  subset: boolean,
+): string[] {
+  const errors: string[] = [];
+
+  if (!subset && expected.length !== actual.length) {
+    errors.push(`${path}: expected array length ${expected.length}, got ${actual.length}`);
+    return errors;
+  }
+
+  for (let i = 0; i < expected.length; i++) {
+    if (i >= actual.length) {
+      errors.push(`${path}[${i}]: expected ${JSON.stringify(expected[i])}, got undefined`);
+      continue;
+    }
+    errors.push(...diffValues(expected[i], actual[i], `${path}[${i}]`, subset));
+  }
+
+  return errors;
+}
+
 function diffObjects(
   expected: Record<string, unknown>,
   actual: unknown,
@@ -50,18 +91,10 @@ function diffObjects(
       continue;
     }
 
-    if (isRecord(expectedVal) && isRecord(actualVal)) {
-      errors.push(...diffObjects(expectedVal, actualVal, fullPath, subset));
-    } else {
-      const expectedStr = JSON.stringify(expectedVal);
-      const actualStr = JSON.stringify(actualVal);
-      if (actualStr !== expectedStr) {
-        errors.push(`${fullPath}: expected ${expectedStr}, got ${actualStr}`);
-      }
-    }
+    errors.push(...diffValues(expectedVal, actualVal, fullPath, subset));
   }
 
-  if (!subset && isRecord(actual)) {
+  if (!subset) {
     for (const key of Object.keys(actual)) {
       if (!(key in expected)) {
         const fullPath = path !== "" ? `${path}.${key}` : key;

@@ -15,9 +15,10 @@ export function Before(
   callback?: (world: World) => Promise<void> | void,
 ): void {
   if (typeof tagFilterOrCallback === "string") {
-    const cb = callback;
-    if (cb === undefined) return;
-    beforeHooks.push({ tagFilter: tagFilterOrCallback, callback: cb });
+    if (callback === undefined) {
+      throw new Error(`Before("${tagFilterOrCallback}") called without a callback`);
+    }
+    beforeHooks.push({ tagFilter: tagFilterOrCallback, callback });
   } else {
     beforeHooks.push({ tagFilter: undefined, callback: tagFilterOrCallback });
   }
@@ -30,20 +31,21 @@ export function After(
   callback?: (world: World) => Promise<void> | void,
 ): void {
   if (typeof tagFilterOrCallback === "string") {
-    const cb = callback;
-    if (cb === undefined) return;
-    afterHooks.push({ tagFilter: tagFilterOrCallback, callback: cb });
+    if (callback === undefined) {
+      throw new Error(`After("${tagFilterOrCallback}") called without a callback`);
+    }
+    afterHooks.push({ tagFilter: tagFilterOrCallback, callback });
   } else {
     afterHooks.push({ tagFilter: undefined, callback: tagFilterOrCallback });
   }
 }
 
 export function getBeforeHooks(): HookDefinition[] {
-  return beforeHooks;
+  return [...beforeHooks];
 }
 
 export function getAfterHooks(): HookDefinition[] {
-  return afterHooks;
+  return [...afterHooks];
 }
 
 export function clearHooks(): void {

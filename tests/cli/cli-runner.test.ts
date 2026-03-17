@@ -51,4 +51,10 @@ describe("runCli", () => {
     const result = await runCli("echo", ["hello"]);
     expect(result.stderr).toBe("");
   });
+
+  test("passes stdin to the process", async () => {
+    const result = await runCli("cat", [], { stdin: "hello from stdin" });
+    expect(result.stdout).toBe("hello from stdin");
+    expect(result.exitCode).toBe(0);
+  });
 });

@@ -1,10 +1,10 @@
 import type { ParsedStep } from "@/parser/models";
 
-type StepKeyword = "Given" | "When" | "Then";
+type StepKeyword = "Given" | "When" | "Then" | "Step";
 
 function resolveKeyword(step: ParsedStep): StepKeyword {
   if (step.keyword === "And" || step.keyword === "But") {
-    return "Given";
+    return "Step";
   }
   return step.keyword;
 }

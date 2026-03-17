@@ -22,7 +22,7 @@ export function createRng(seed?: number): SeededRng {
 
   const envSeed = process.env.FEATS_SEED;
   if (envSeed !== undefined && envSeed !== "") {
-    const parsed = parseInt(envSeed, 10);
+    const parsed = Number(envSeed);
     resolvedSeed = Number.isNaN(parsed) ? Date.now() : parsed;
   } else if (seed !== undefined) {
     resolvedSeed = seed;
@@ -39,6 +39,9 @@ export function createRng(seed?: number): SeededRng {
     seed: resolvedSeed,
 
     nextInt(min: number, max: number): number {
+      if (min > max) {
+        throw new Error(`nextInt: min (${min}) must not exceed max (${max})`);
+      }
       return Math.floor(next() * (max - min + 1)) + min;
     },
 
@@ -69,6 +72,9 @@ export function createRng(seed?: number): SeededRng {
     },
 
     sample<T>(items: readonly T[], count: number): T[] {
+      if (count < 0) {
+        throw new Error(`sample: count must be non-negative, got ${count}`);
+      }
       if (count > items.length) {
         throw new Error(`Cannot sample ${count} elements from array of length ${items.length}`);
       }

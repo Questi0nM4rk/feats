@@ -19,21 +19,15 @@ export async function runCli(
 
   const envValue = opts?.env !== undefined ? { ...process.env, ...opts.env } : process.env;
 
-  const proc =
-    opts?.cwd !== undefined
-      ? Bun.spawn([command, ...(args ?? [])], {
-          cwd: opts.cwd,
-          env: envValue,
-          stdin: stdinValue,
-          stdout: "pipe",
-          stderr: "pipe",
-        })
-      : Bun.spawn([command, ...(args ?? [])], {
-          env: envValue,
-          stdin: stdinValue,
-          stdout: "pipe",
-          stderr: "pipe",
-        });
+  const spawnOpts = {
+    env: envValue,
+    stdin: stdinValue,
+    stdout: "pipe" as const,
+    stderr: "pipe" as const,
+    ...(opts?.cwd !== undefined ? { cwd: opts.cwd } : {}),
+  };
+
+  const proc = Bun.spawn([command, ...(args ?? [])], spawnOpts);
 
   let timedOut = false;
 
@@ -45,10 +39,15 @@ export async function runCli(
         resolve(1);
       }, timeout);
 
-      proc.exited.then((code) => {
-        clearTimeout(timer);
-        resolve(code ?? 1);
-      });
+      proc.exited
+        .then((code) => {
+          clearTimeout(timer);
+          resolve(code ?? 1);
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          resolve(1);
+        });
     });
   };
 

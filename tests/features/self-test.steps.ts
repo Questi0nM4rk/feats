@@ -1,5 +1,5 @@
 import { expect } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Feature, FixtureProject } from "@/feats";
@@ -75,8 +75,7 @@ Given(
   async (world: SelfTestWorld, fileName: unknown) => {
     const name = typeof fileName === "string" ? fileName : String(fileName);
     world.fixtureFileName = name;
-    const tmpDir = join(tmpdir(), `feats-self-test-${Date.now()}`);
-    await mkdir(tmpDir, { recursive: true });
+    const tmpDir = await mkdtemp(join(tmpdir(), "feats-self-test-"));
     await writeFile(join(tmpDir, name), JSON.stringify({ created: true }), "utf-8");
     world.fixtureTmpDir = tmpDir;
   },

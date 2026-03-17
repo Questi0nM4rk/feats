@@ -83,6 +83,20 @@ function mapPickleDataTable(dt: messages.PickleTable): DataTable {
   return createDataTable(rows);
 }
 
+function compiledStepToLocation(
+  compiledStep: messages.PickleStep,
+  stepIndex: Map<string, messages.Step>,
+  uri: string,
+): StepLocation {
+  for (const nodeId of compiledStep.astNodeIds) {
+    const step = stepIndex.get(nodeId);
+    if (step !== undefined) {
+      return { uri, line: step.location.line };
+    }
+  }
+  return { uri, line: 0 };
+}
+
 function compiledScenarioToScenario(
   compiled: messages.Pickle,
   stepIndex: Map<string, messages.Step>,
@@ -91,10 +105,7 @@ function compiledScenarioToScenario(
     const keyword = compiledStepToKeyword(cs, stepIndex);
     const dataTable = compiledStepToDataTable(cs);
     const docString = cs.argument?.docString?.content;
-    const location: StepLocation = {
-      uri: compiled.uri,
-      line: 0,
-    };
+    const location = compiledStepToLocation(cs, stepIndex, compiled.uri);
     return { keyword, text: cs.text, dataTable, docString, location };
   });
 

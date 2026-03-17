@@ -43,6 +43,16 @@ describe("assertOutput", () => {
     expect(() => assertOutput(result, { stderr: "error" })).toThrow("stderr assertion failed");
   });
 
+  test("passes when stderr regex matches", () => {
+    const result = makeResult({ stderr: "error: something went wrong" });
+    expect(() => assertOutput(result, { stderr: /^error:/ })).not.toThrow();
+  });
+
+  test("throws when stderr regex does not match with readable message", () => {
+    const result = makeResult({ stderr: "all good" });
+    expect(() => assertOutput(result, { stderr: /^error:/ })).toThrow("/^error:/");
+  });
+
   test("passes when exitCode matches", () => {
     const result = makeResult({ exitCode: 1 });
     expect(() => assertOutput(result, { exitCode: 1 })).not.toThrow();

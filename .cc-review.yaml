@@ -10,17 +10,19 @@ ignore_paths:
   - "**/*.md"
 
 instructions: |
-  TypeScript CLI tool using Commander.js + Bun runtime + Zod schemas.
-  Pipeline + plugin architecture with DI via PipelineContext.
-  Generated configs carry a sha256 hash header — never edit them directly.
-  All lint suppressions go through .guardrails-exceptions.toml, not inline.
+  BDD/Gherkin test framework for Bun runtime.
+  Uses @cucumber/gherkin parser and @cucumber/cucumber-expressions for step matching.
+  Key patterns: step registry (Given/When/Then/Step), cucumber expressions, fixture management.
+  Tests use bun:test integration — runFeatures() wraps scenarios in describe/test blocks.
   No `any` types — use `unknown` + Zod at boundaries.
   No `!` non-null assertions — handle undefined explicitly.
   Max 200 lines per file. Bun >= 1.2.0 runtime.
 
 known_patterns:
-  - "FakeFileManager/FakeCommandRunner/FakeConsole are test fakes, not production code"
-  - "lefthookGenerator.generate() intentionally throws — callers use generateLefthookConfig()"
+  - "StepRegistry.getAll() is snapshotted at runFeatures() call time to avoid lifecycle races"
+  - "SeededRng uses Mulberry32 — deterministic, pure math, no external deps"
+  - "FixtureProject paths are validated to prevent directory traversal"
+  - "createDataTable rows are defensively copied on construction"
 
 slop_detection: true
 memory: true

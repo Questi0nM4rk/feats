@@ -37,16 +37,19 @@ export interface Feature {
 }
 
 export function createDataTable(rows: readonly (readonly string[])[]): DataTable {
+  // Defensive copy to prevent external mutation of the rows reference
+  const frozenRows: readonly (readonly string[])[] = rows.map((r) => [...r]);
+
   return {
-    rows,
+    rows: frozenRows,
     asObjects(): Record<string, string>[] {
-      const header = rows[0];
-      if (header === undefined || rows.length < 2) {
+      const header = frozenRows[0];
+      if (header === undefined || frozenRows.length < 2) {
         return [];
       }
       const result: Record<string, string>[] = [];
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
+      for (let i = 1; i < frozenRows.length; i++) {
+        const row = frozenRows[i];
         if (row === undefined) continue;
         const obj: Record<string, string> = {};
         for (let j = 0; j < header.length; j++) {
@@ -61,7 +64,7 @@ export function createDataTable(rows: readonly (readonly string[])[]): DataTable
       return result;
     },
     asLists(): string[][] {
-      return rows.map((r) => [...r]);
+      return frozenRows.map((r) => [...r]);
     },
   };
 }

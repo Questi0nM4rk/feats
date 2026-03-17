@@ -15,11 +15,18 @@ function matchesExpectation(actual: string, expected: string | RegExp): boolean 
   return expected.test(actual);
 }
 
+function serializeExpected(expected: string | RegExp): string {
+  if (typeof expected === "string") {
+    return JSON.stringify(expected);
+  }
+  return expected.toString();
+}
+
 export function assertOutput(result: CLIResult, expectations: OutputExpectations): void {
   if (expectations.stdout !== undefined) {
     if (!matchesExpectation(result.stdout, expectations.stdout)) {
       throw new Error(
-        `stdout assertion failed: expected ${JSON.stringify(expectations.stdout)}, got ${JSON.stringify(result.stdout)}`,
+        `stdout assertion failed: expected ${serializeExpected(expectations.stdout)}, got ${JSON.stringify(result.stdout)}`,
       );
     }
   }
@@ -27,7 +34,7 @@ export function assertOutput(result: CLIResult, expectations: OutputExpectations
   if (expectations.stderr !== undefined) {
     if (!matchesExpectation(result.stderr, expectations.stderr)) {
       throw new Error(
-        `stderr assertion failed: expected ${JSON.stringify(expectations.stderr)}, got ${JSON.stringify(result.stderr)}`,
+        `stderr assertion failed: expected ${serializeExpected(expectations.stderr)}, got ${JSON.stringify(result.stderr)}`,
       );
     }
   }
@@ -40,8 +47,9 @@ export function assertOutput(result: CLIResult, expectations: OutputExpectations
     }
   }
 
+  const combined = result.stdout + result.stderr;
+
   if (expectations.contains !== undefined) {
-    const combined = result.stdout + result.stderr;
     if (!combined.includes(expectations.contains)) {
       throw new Error(
         `contains assertion failed: expected output to contain ${JSON.stringify(expectations.contains)}`,
@@ -50,7 +58,6 @@ export function assertOutput(result: CLIResult, expectations: OutputExpectations
   }
 
   if (expectations.notContains !== undefined) {
-    const combined = result.stdout + result.stderr;
     if (combined.includes(expectations.notContains)) {
       throw new Error(
         `notContains assertion failed: expected output not to contain ${JSON.stringify(expectations.notContains)}`,

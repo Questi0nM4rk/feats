@@ -29,9 +29,6 @@ export function matchStep(definitions: readonly StepDefinition[], stepText: stri
     throw new Error(`Ambiguous step "${stepText}" matches: ${patterns}`);
   }
 
-  const match = matches[0];
-  if (match === undefined) {
-    throw new Error(`Undefined step: "${stepText}"`);
-  }
-  return match;
+  // matches.length === 1 guaranteed by the checks above
+  return matches[0] as MatchResult;
 }

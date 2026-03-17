@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile as fsReadFile } from "node:fs/promises";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { CLIResult } from "@/cli/cli-result";
 import { runCli } from "@/cli/cli-runner";
@@ -16,6 +16,15 @@ export interface FixtureProject {
   cleanup(): Promise<void>;
 }
 
+function resolveInFixture(dir: string, path: string): string {
+  const resolved = resolve(dir, path);
+  const base = resolve(dir);
+  if (!resolved.startsWith(`${base}/`) && resolved !== base) {
+    throw new Error(`Path traversal detected: "${path}" escapes fixture directory`);
+  }
+  return resolved;
+}
+
 export function createFixtureProject(dir: string): FixtureProject {
   return {
     dir,
@@ -25,20 +34,20 @@ export function createFixtureProject(dir: string): FixtureProject {
     },
 
     hasFile(path: string): boolean {
-      return existsSync(join(dir, path));
+      return existsSync(resolveInFixture(dir, path));
     },
 
     async readFile(path: string): Promise<string> {
-      return fsReadFile(join(dir, path), "utf-8");
+      return fsReadFile(resolveInFixture(dir, path), "utf-8");
     },
 
     async readJson(path: string): Promise<unknown> {
-      const contents = await fsReadFile(join(dir, path), "utf-8");
+      const contents = await fsReadFile(resolveInFixture(dir, path), "utf-8");
       return JSON.parse(contents) as unknown;
     },
 
     async readToml(path: string): Promise<unknown> {
-      const contents = await fsReadFile(join(dir, path), "utf-8");
+      const contents = await fsReadFile(resolveInFixture(dir, path), "utf-8");
       return parseToml(contents);
     },
 

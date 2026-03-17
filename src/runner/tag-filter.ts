@@ -88,8 +88,13 @@ function parseNotExpr(tokens: Token[], pos: { index: number }, tags: readonly Ta
 
 function parseAtom(tokens: Token[], pos: { index: number }, tags: readonly Tag[]): boolean {
   const token = tokens[pos.index];
-  if (token === undefined || token.kind !== "tag") {
-    return false;
+  if (token === undefined) {
+    throw new Error("Malformed tag filter expression: unexpected end of input");
+  }
+  if (token.kind !== "tag") {
+    throw new Error(
+      `Malformed tag filter expression: expected tag, got "${token.value}" at position ${pos.index}`,
+    );
   }
   pos.index++;
   return hasTag(tags, token.value);
