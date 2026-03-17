@@ -1,23 +1,20 @@
 {
   "name": "@questi0nm4rk/feats",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "BDD/Gherkin test framework for Bun — feature testing with typed step definitions",
   "type": "module",
   "exports": {
     ".": {
-      "bun": "./src/feats.ts",
       "import": "./dist/feats.js",
       "types": "./dist/src/feats.d.ts"
     },
     "./plugin": {
-      "bun": "./src/plugin/bun-plugin.ts",
       "import": "./dist/plugin/bun-plugin.js",
       "types": "./dist/src/plugin/bun-plugin.d.ts"
     }
   },
   "files": [
-    "dist/",
-    "src/"
+    "dist/"
   ],
   "scripts": {
     "test": "bun test",
