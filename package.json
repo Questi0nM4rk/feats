@@ -5,14 +5,20 @@
   "type": "module",
   "exports": {
     ".": {
-      "import": "./src/feats.ts",
-      "types": "./src/feats.ts"
+      "bun": "./src/feats.ts",
+      "import": "./dist/feats.js",
+      "types": "./dist/src/feats.d.ts"
     },
     "./plugin": {
-      "import": "./src/plugin/bun-plugin.ts",
-      "types": "./src/plugin/bun-plugin.ts"
+      "bun": "./src/plugin/bun-plugin.ts",
+      "import": "./dist/plugin/bun-plugin.js",
+      "types": "./dist/src/plugin/bun-plugin.d.ts"
     }
   },
+  "files": [
+    "dist/",
+    "src/"
+  ],
   "scripts": {
     "test": "bun test",
     "test:watch": "bun test --watch",
