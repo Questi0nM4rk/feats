@@ -272,7 +272,10 @@ Feature: Tagged hooks
   clearRegistry();
   clearHooks();
 
-  Given("an inherited-tag step", () => {});
+  let inheritedRuns = 0;
+  Given("an inherited-tag step", () => {
+    inheritedRuns += 1;
+  });
 
   // tagFilter "@smoke" — feature is @smoke, scenarios have no own tags.
   // Both scenarios should run because the feature tag is inherited.
@@ -290,6 +293,13 @@ Feature: All scenarios inherit @smoke
   );
 
   runFeatures([featureTaggedInheritance], { tagFilter: "@smoke" });
+
+  describe("runFeatures — feature-tag inheritance positive path", () => {
+    test("both inherited scenarios actually executed (not just unskipped)", () => {
+      // Counter is populated by the nested test bodies above.
+      expect(inheritedRuns).toBe(2);
+    });
+  });
 }
 
 // --- Feature-level tag exclusion skips every scenario ---
@@ -331,7 +341,10 @@ Feature: All scenarios excluded by feature tag
   clearRegistry();
   clearHooks();
 
-  Given("a runs-under-complex-filter step", () => {});
+  let complexFilterRuns = 0;
+  Given("a runs-under-complex-filter step", () => {
+    complexFilterRuns += 1;
+  });
   Given("a never-runs-under-complex-filter step", () => {
     throw new Error("complex filter exclusion should have skipped this");
   });
@@ -355,4 +368,10 @@ Feature: Complex filter
   );
 
   runFeatures([multiTag], { tagFilter: "(@smoke or @critical) and not @wip" });
+
+  describe("runFeatures — complex parenthesized filter positive path", () => {
+    test("exactly one matching scenario executed", () => {
+      expect(complexFilterRuns).toBe(1);
+    });
+  });
 }

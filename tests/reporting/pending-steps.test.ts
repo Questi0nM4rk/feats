@@ -96,4 +96,28 @@ describe("generateStepSnippet", () => {
     const snippet = generateStepSnippet(step);
     expect(snippet).toContain('"an empty string {string}"');
   });
+
+  test("digits glued to letters are NOT substituted (word-boundary guard)", () => {
+    // Without word boundaries, "has3items" would become "has{int}items".
+    // TOKEN_PATTERN's (?<!\w)...(?!\w) guards keep the embedded digits as
+    // literal text.
+    const step = makeStep("Given", "user has3items in cart");
+    const snippet = generateStepSnippet(step);
+    expect(snippet).toContain('"user has3items in cart"');
+    expect(snippet).not.toContain("{int}");
+  });
+
+  test("digits glued to letters via hyphen are NOT substituted", () => {
+    // Same rule applies for hyphen-glued numbers: `abc-5def` keeps the `-5`.
+    const step = makeStep("Given", "build abc-5def succeeds");
+    const snippet = generateStepSnippet(step);
+    expect(snippet).toContain('"build abc-5def succeeds"');
+  });
+
+  test("standalone numbers around word-glued digits still substitute", () => {
+    // The guard is per-token: 3 between spaces matches, embedded ones don't.
+    const step = makeStep("Given", "user has3items and 5 carts");
+    const snippet = generateStepSnippet(step);
+    expect(snippet).toContain('"user has3items and {int} carts"');
+  });
 });

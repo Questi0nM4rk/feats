@@ -85,6 +85,7 @@ export function isDataTable(x: unknown): x is DataTable {
   const obj = x as { rows?: unknown; asObjects?: unknown; asLists?: unknown };
   return (
     Array.isArray(obj.rows) &&
+    obj.rows.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === "string")) &&
     typeof obj.asObjects === "function" &&
     typeof obj.asLists === "function"
   );

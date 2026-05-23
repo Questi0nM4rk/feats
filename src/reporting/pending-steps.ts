@@ -10,7 +10,11 @@ function resolveKeyword(step: ParsedStep): StepKeyword {
 }
 
 // Order matters in alternation: floats before ints (`3.14` must not match `3`).
-const TOKEN_PATTERN = /-?\d+\.\d+|-?\d+|"[^"]*"/g;
+// `(?<!\w)` and `(?!\w)` keep digit runs from being matched when they're
+// glued to letters/underscores. Without them, `has3items` would become
+// `has{int}items` and `abc-5def` would become `abc{int}def`. Quoted-string
+// tokens don't need the guard — `"..."` is unambiguous.
+const TOKEN_PATTERN = /(?<!\w)-?\d+\.\d+(?!\w)|(?<!\w)-?\d+(?!\w)|"[^"]*"/g;
 
 function placeholderFor(token: string): string {
   if (token.startsWith('"')) return "{string}";

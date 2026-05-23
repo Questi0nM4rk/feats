@@ -3,14 +3,21 @@
 // Tests for resetFeats() and the test-isolation export trio
 // (clearRegistry / clearHooks / clearParameterTypeRegistry). All four are
 // new public exports in §1.9.
+//
+// Every test starts with `resetFeats()` so a failure in one cannot leak
+// shared module state into the next (the very property under test).
 
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { defineParameterType, getParameterTypeRegistry } from "@/registry/parameter-types";
 import { Given, getRegistry } from "@/registry/step-registry";
 import { After, Before, getAfterHooks, getBeforeHooks } from "@/runner/hook-runner";
 import { resetFeats } from "@/state/reset";
 
 describe("resetFeats", () => {
+  beforeEach(() => {
+    resetFeats();
+  });
+
   test("clears the step registry", () => {
     Given("a step that should be cleared", () => {});
     expect(getRegistry().getAll().length).toBeGreaterThan(0);
@@ -56,8 +63,6 @@ describe("resetFeats", () => {
         transformer: (s) => s,
       }),
     ).not.toThrow();
-    // Tidy up for any later test in this file.
-    resetFeats();
   });
 
   test("calling resetFeats on already-empty state is a no-op", () => {

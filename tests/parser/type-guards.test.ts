@@ -21,6 +21,39 @@ describe("isDataTable", () => {
     expect(isDataTable({ asObjects: () => [], asLists: () => [] })).toBe(false); // no rows
   });
 
+  test("rejects malformed rows: non-array rows", () => {
+    // A common confusion: rows that are NOT arrays of strings. The guard
+    // must reject these even when asObjects/asLists are present, otherwise
+    // narrowed code crashes on the first .map / iteration.
+    expect(
+      isDataTable({
+        rows: [42],
+        asObjects: () => [],
+        asLists: () => [],
+      }),
+    ).toBe(false);
+  });
+
+  test("rejects malformed rows: non-string cells", () => {
+    expect(
+      isDataTable({
+        rows: [[1, 2, 3]],
+        asObjects: () => [],
+        asLists: () => [],
+      }),
+    ).toBe(false);
+  });
+
+  test("accepts empty rows array (valid edge case)", () => {
+    expect(
+      isDataTable({
+        rows: [],
+        asObjects: () => [],
+        asLists: () => [],
+      }),
+    ).toBe(true);
+  });
+
   test("rejects null, undefined, strings, numbers, arrays", () => {
     expect(isDataTable(null)).toBe(false);
     expect(isDataTable(undefined)).toBe(false);
