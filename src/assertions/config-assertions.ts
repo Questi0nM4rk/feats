@@ -21,7 +21,10 @@ function detectFormat(filePath: string): ConfigFormat {
 function parseConfig(content: string, format: ConfigFormat): unknown {
   if (format === "json") return JSON.parse(content) as unknown;
   if (format === "toml") return parseToml(content);
-  return parseYaml(content) as unknown;
+  // maxAliasCount caps anchor/alias expansion to prevent "billion laughs"-style
+  // resource exhaustion. 100 is generous for legitimate configs (the YAML 1.2
+  // spec recommends bounded counts; cucumber-js uses 100).
+  return parseYaml(content, { maxAliasCount: 100 }) as unknown;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

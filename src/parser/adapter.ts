@@ -60,6 +60,23 @@ function buildStepIndex(gherkinDoc: messages.GherkinDocument): Map<string, messa
   return index;
 }
 
+// Cucumber's compile() merges Background steps into each Pickle. For outline
+// scenarios we must strip them again — the feature-runner re-runs Background
+// explicitly before each scenario via `feature.background.steps`, so leaving
+// them in `scenario.steps` would cause Background to execute twice.
+// Plain (non-outline) scenarios use the AST directly and are unaffected.
+function buildBackgroundStepIds(gherkinDoc: messages.GherkinDocument): Set<string> {
+  const ids = new Set<string>();
+  const feature = gherkinDoc.feature;
+  if (feature === undefined) return ids;
+  for (const child of feature.children) {
+    if (child.background !== undefined) {
+      for (const step of child.background.steps) ids.add(step.id);
+    }
+  }
+  return ids;
+}
+
 function compiledStepToKeyword(
   compiledStep: messages.PickleStep,
   stepIndex: Map<string, messages.Step>,
@@ -101,8 +118,12 @@ function compiledStepToLocation(
 function compiledScenarioToScenario(
   compiled: messages.Pickle,
   stepIndex: Map<string, messages.Step>,
+  backgroundStepIds: ReadonlySet<string>,
 ): Scenario {
-  const steps: ParsedStep[] = compiled.steps.map((cs) => {
+  const scenarioOnlySteps = compiled.steps.filter(
+    (cs) => !cs.astNodeIds.some((id) => backgroundStepIds.has(id)),
+  );
+  const steps: ParsedStep[] = scenarioOnlySteps.map((cs) => {
     const keyword = compiledStepToKeyword(cs, stepIndex);
     const dataTable = compiledStepToDataTable(cs);
     const docString = cs.argument?.docString?.content;
@@ -117,6 +138,23 @@ function compiledScenarioToScenario(
 
 function isOutline(scenario: messages.Scenario): boolean {
   return scenario.examples.length > 0;
+}
+
+// When a Scenario Outline's name has no <placeholder>, every compiled example
+// inherits the same name. Test reports then can't tell rows apart. Append a
+// 1-based index only to the duplicates so single-row outlines and outlines
+// with placeholder-bearing names stay clean.
+function disambiguateOutlineNames(scenarios: Scenario[]): Scenario[] {
+  const counts = new Map<string, number>();
+  for (const s of scenarios) counts.set(s.name, (counts.get(s.name) ?? 0) + 1);
+
+  const seen = new Map<string, number>();
+  return scenarios.map((s) => {
+    if ((counts.get(s.name) ?? 0) <= 1) return s;
+    const n = (seen.get(s.name) ?? 0) + 1;
+    seen.set(s.name, n);
+    return { ...s, name: `${s.name} [${n}]` };
+  });
 }
 
 function groupCompiledByScenarioId(
@@ -161,6 +199,7 @@ export function parseFeature(source: string, uri: string): Feature {
   const scenarios: Scenario[] = [];
 
   const stepIndex = buildStepIndex(gherkinDoc);
+  const backgroundStepIds = buildBackgroundStepIds(gherkinDoc);
   const compiled = compile(gherkinDoc, uri, newId);
   const compiledByScenarioId = groupCompiledByScenarioId(compiled);
 
@@ -175,9 +214,10 @@ export function parseFeature(source: string, uri: string): Feature {
       const scenario = child.scenario;
       if (isOutline(scenario)) {
         const outlineScenarios = compiledByScenarioId.get(scenario.id) ?? [];
-        for (const item of outlineScenarios) {
-          scenarios.push(compiledScenarioToScenario(item, stepIndex));
-        }
+        const mapped = outlineScenarios.map((item) =>
+          compiledScenarioToScenario(item, stepIndex, backgroundStepIds),
+        );
+        scenarios.push(...disambiguateOutlineNames(mapped));
       } else {
         const steps = scenario.steps.map((s) => mapStep(s, uri));
         const scenarioTags = scenario.tags.map(mapTag);
