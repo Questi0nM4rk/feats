@@ -104,6 +104,13 @@ Feature: Background
 }
 
 // --- Tag filtering: @smoke passes, @slow is skipped ---
+//
+// LOAD-BEARING SKIP: the @slow scenario's step body throws on purpose. The
+// runner converts filter-excluded scenarios into bun:test `test.skip(...)`
+// blocks (src/runner/feature-runner.ts:56), so this test PROVES filtering
+// works by ensuring the throwing step never executes. The "1 skip" in the
+// suite's overall pass/skip/fail summary comes from here; don't try to
+// "fix" it by removing the @slow scenario.
 {
   clearRegistry();
   clearHooks();
@@ -253,4 +260,99 @@ Feature: Tagged hooks
       expect(smokeBeforeCount).toBe(1);
     });
   });
+}
+
+// --- Feature-level tags are inherited by scenarios for filtering ---
+// Tags declared above `Feature:` apply to every scenario inside it. The
+// runner merges [...feature.tags, ...scenario.tags] before evaluating the
+// filter. This block proves a scenario with no own tags still matches a
+// feature-tagged filter, and an exclusion at the feature level skips
+// every scenario inside.
+{
+  clearRegistry();
+  clearHooks();
+
+  Given("an inherited-tag step", () => {});
+
+  // tagFilter "@smoke" — feature is @smoke, scenarios have no own tags.
+  // Both scenarios should run because the feature tag is inherited.
+  const featureTaggedInheritance = parseFeature(
+    `
+@smoke
+Feature: All scenarios inherit @smoke
+  Scenario: First inherits
+    Given an inherited-tag step
+
+  Scenario: Second inherits
+    Given an inherited-tag step
+`,
+    "feature-inherit.feature",
+  );
+
+  runFeatures([featureTaggedInheritance], { tagFilter: "@smoke" });
+}
+
+// --- Feature-level tag exclusion skips every scenario ---
+//
+// LOAD-BEARING SKIP: both scenarios' step bodies throw on purpose, same
+// pattern as the @smoke/@slow block above. Filtering with `not @slow`
+// should skip both because @slow is on the feature.
+{
+  clearRegistry();
+  clearHooks();
+
+  Given("a never-run step", () => {
+    throw new Error("feature-level @slow exclusion should have skipped this");
+  });
+
+  const featureExcluded = parseFeature(
+    `
+@slow
+Feature: All scenarios excluded by feature tag
+  Scenario: First excluded
+    Given a never-run step
+
+  Scenario: Second excluded
+    Given a never-run step
+`,
+    "feature-exclude.feature",
+  );
+
+  runFeatures([featureExcluded], { tagFilter: "not @slow" });
+}
+
+// --- Complex parenthesized filter against multi-tagged scenarios ---
+// Adds runtime coverage for the §1.4 parens feature against a scenario
+// that carries multiple tags. Filter: (@smoke or @critical) and not @wip.
+//   - @smoke + @critical (no @wip) → runs
+//   - @critical + @wip            → skips
+//   - @wip alone                   → skips
+{
+  clearRegistry();
+  clearHooks();
+
+  Given("a runs-under-complex-filter step", () => {});
+  Given("a never-runs-under-complex-filter step", () => {
+    throw new Error("complex filter exclusion should have skipped this");
+  });
+
+  const multiTag = parseFeature(
+    `
+Feature: Complex filter
+  @smoke @critical
+  Scenario: Should run
+    Given a runs-under-complex-filter step
+
+  @critical @wip
+  Scenario: Skipped by wip exclusion
+    Given a never-runs-under-complex-filter step
+
+  @wip
+  Scenario: Skipped by missing required tag
+    Given a never-runs-under-complex-filter step
+`,
+    "complex-filter.feature",
+  );
+
+  runFeatures([multiTag], { tagFilter: "(@smoke or @critical) and not @wip" });
 }
