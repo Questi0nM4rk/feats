@@ -98,6 +98,77 @@ describe("assertConfig YAML", () => {
     const path = await makeTmpFile("config.yaml", "name: wrong\n");
     expect(() => assertConfig(path, { name: "test" })).toThrow("name:");
   });
+
+  test("accepts modest alias use (legitimate)", async () => {
+    // 5 references to one anchor — well under the 100-alias cap.
+    const yaml = `
+host: &h "db.example.com"
+primary: *h
+replica_a: *h
+replica_b: *h
+replica_c: *h
+replica_d: *h
+`;
+    const path = await makeTmpFile("aliases.yaml", yaml);
+    expect(() =>
+      assertConfig(path, { primary: "db.example.com", replica_a: "db.example.com" }),
+    ).not.toThrow();
+  });
+
+  test("rejects billion-laughs alias expansion", async () => {
+    // 9-level nesting where each level references the previous 9 times.
+    // Without maxAliasCount, this expands to 9^9 = 387M references.
+    const yaml = `
+a: &a ["x","x","x","x","x","x","x","x","x"]
+b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a]
+c: &c [*b,*b,*b,*b,*b,*b,*b,*b,*b]
+d: &d [*c,*c,*c,*c,*c,*c,*c,*c,*c]
+e: &e [*d,*d,*d,*d,*d,*d,*d,*d,*d]
+f: &f [*e,*e,*e,*e,*e,*e,*e,*e,*e]
+g: &g [*f,*f,*f,*f,*f,*f,*f,*f,*f]
+h: &h [*g,*g,*g,*g,*g,*g,*g,*g,*g]
+i: [*h,*h,*h,*h,*h,*h,*h,*h,*h]
+`;
+    const path = await makeTmpFile("bomb.yaml", yaml);
+    expect(() => assertConfig(path, { a: ["x"] })).toThrow();
+  });
+
+  test("YAML with a single anchor referenced once parses normally", async () => {
+    // Regression: simplest possible alias usage must always work.
+    const yaml = `
+base: &base
+  timeout: 30
+  retries: 3
+service: *base
+`;
+    const path = await makeTmpFile("single-alias.yaml", yaml);
+    expect(() => assertConfig(path, { base: { timeout: 30 } })).not.toThrow();
+  });
+
+  test("YAML with no aliases at all parses normally", async () => {
+    // Ensure the maxAliasCount option does not break alias-free YAML.
+    const yaml = `
+database:
+  host: localhost
+  port: 5432
+cache:
+  host: redis.local
+  port: 6379
+`;
+    const path = await makeTmpFile("no-aliases.yaml", yaml);
+    expect(() =>
+      assertConfig(path, { database: { host: "localhost", port: 5432 } }),
+    ).not.toThrow();
+  });
+
+  test("2-level bomb (> 100 expansions) is rejected", async () => {
+    // A smaller bomb: one anchor referenced 101 times in a list.
+    // This exercises the maxAliasCount=100 boundary without running out of memory.
+    const refs = Array.from({ length: 101 }, () => "*a").join(",");
+    const yaml = `a: &a 1\nb: [${refs}]`;
+    const path = await makeTmpFile("bomb101.yaml", yaml);
+    expect(() => assertConfig(path, { a: 1 })).toThrow();
+  });
 });
 
 describe("assertConfig format option", () => {
