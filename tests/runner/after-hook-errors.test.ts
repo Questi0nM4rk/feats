@@ -148,4 +148,72 @@ runFeatures([f]);
     const { exitCode } = await runScenario(source);
     expect(exitCode).toBe(0);
   });
+
+  test("async After hook that rejects → error surfaces", async () => {
+    // Verify the fix works when the After hook is async (returns a rejected
+    // Promise rather than throwing synchronously).
+    const source =
+      PRELUDE +
+      `
+Given("a passing step", () => {});
+After(async () => {
+  await Promise.resolve();
+  throw new Error("ASYNC_HOOK_FAILED");
+});
+const f = parseFeature(\`
+Feature: F
+  Scenario: S
+    Given a passing step
+\`, "f.feature");
+runFeatures([f]);
+`;
+    const { exitCode, stdout, stderr } = await runScenario(source);
+    const out = stdout + stderr;
+    expect(out).toContain("ASYNC_HOOK_FAILED");
+    expect(exitCode).not.toBe(0);
+  });
+
+  test("tag-filtered After hook does not run when scenario lacks the tag", async () => {
+    // A hook registered with a tag filter must only run for matching scenarios.
+    // For an untagged scenario, the @cleanup hook must stay silent — proven by
+    // the lack of its (intentionally throwing) error in the output.
+    const source =
+      PRELUDE +
+      `
+Given("a passing step", () => {});
+After("@cleanup", () => { throw new Error("SHOULD_NOT_RUN"); });
+const f = parseFeature(\`
+Feature: F
+  Scenario: S
+    Given a passing step
+\`, "f.feature");
+runFeatures([f]);
+`;
+    const { exitCode, stdout, stderr } = await runScenario(source);
+    const out = stdout + stderr;
+    expect(out).not.toContain("SHOULD_NOT_RUN");
+    expect(exitCode).toBe(0);
+  });
+
+  test("tag-filtered After hook runs when scenario has the matching tag", async () => {
+    // The same tag filter that was silent for an untagged scenario must fire
+    // (and surface its error) for a scenario that carries the tag.
+    const source =
+      PRELUDE +
+      `
+Given("a passing step", () => {});
+After("@cleanup", () => { throw new Error("CLEANUP_HOOK_FIRED"); });
+const f = parseFeature(\`
+Feature: F
+  @cleanup
+  Scenario: S
+    Given a passing step
+\`, "f.feature");
+runFeatures([f]);
+`;
+    const { exitCode, stdout, stderr } = await runScenario(source);
+    const out = stdout + stderr;
+    expect(out).toContain("CLEANUP_HOOK_FIRED");
+    expect(exitCode).not.toBe(0);
+  });
 });

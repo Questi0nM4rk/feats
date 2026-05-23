@@ -317,3 +317,45 @@ Feature: Positional args
     });
   });
 }
+
+// ---- 10: Background runs ONCE per outline example, not twice ----
+{
+  clearRegistry();
+  clearHooks();
+  const log: string[] = [];
+
+  Given("the background step", () => {
+    log.push("bg");
+  });
+  Given("outline step {int}", (_world, n: unknown) => {
+    log.push(`outline-${String(n)}`);
+  });
+
+  const feature = parseFeature(
+    `
+Feature: Background + outline
+  Background:
+    Given the background step
+
+  Scenario Outline: Run <a>
+    Given outline step <a>
+
+    Examples:
+      | a |
+      | 1 |
+      | 2 |
+`,
+    "contract-bg-outline.feature",
+  );
+
+  runFeatures([feature]);
+
+  describe("contract: background fires once per outline example", () => {
+    test("each outline row gets exactly one background + one outline step", () => {
+      // 2 examples × (1 bg + 1 outline step) = 4 entries, alternating.
+      // Without the fix, background appeared in scenario.steps too, so each
+      // row produced bg,bg,outline-N — 6 entries.
+      expect(log).toEqual(["bg", "outline-1", "bg", "outline-2"]);
+    });
+  });
+}

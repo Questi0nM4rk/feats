@@ -116,4 +116,39 @@ Feature: F
     const names = feature.scenarios.map((s) => s.name);
     expect(names).toEqual(["Sell a widget [1]", "Sell a widget [2]", "Sell a gadget"]);
   });
+
+  test("two separate outlines in same feature each disambiguate independently", () => {
+    // disambiguateOutlineNames is called per-outline, not globally. Two
+    // outlines that both produce colliding names get their own independent
+    // [1],[2] counters — the second outline restarts at [1].
+    const feature = parseFeature(
+      `
+Feature: F
+  Scenario Outline: Process item
+    Given an item of type <type>
+
+    Examples:
+      | type |
+      | A    |
+      | A    |
+
+  Scenario Outline: Process item
+    Given an item of type <type>
+
+    Examples:
+      | type |
+      | B    |
+      | B    |
+`,
+      "f.feature",
+    );
+
+    const names = feature.scenarios.map((s) => s.name);
+    expect(names).toEqual([
+      "Process item [1]",
+      "Process item [2]",
+      "Process item [1]",
+      "Process item [2]",
+    ]);
+  });
 });

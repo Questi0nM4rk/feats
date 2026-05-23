@@ -17,6 +17,11 @@ See [`SEMVER.md`](./SEMVER.md) for the project's stability policy.
 - `Scenario Outline` whose name has no `<placeholder>` no longer produces
   duplicate `test()` names; colliding examples get a `[N]` suffix
   (`src/parser/adapter.ts`).
+- `Scenario Outline` examples no longer double-execute Background steps. The
+  parser used to leave Cucumber's pickle-merged Background steps inside each
+  outline scenario's `.steps`, while the runner also ran Background separately
+  — so for outlines, Background ran twice. Now stripped from outline pickles
+  (`src/parser/adapter.ts`). Plain scenarios were unaffected and remain so.
 - YAML config-assertion parsing is bounded by `maxAliasCount: 100` to prevent
   "billion laughs"-style anchor expansion attacks
   (`src/assertions/config-assertions.ts`).

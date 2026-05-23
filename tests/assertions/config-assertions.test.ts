@@ -132,6 +132,15 @@ i: [*h,*h,*h,*h,*h,*h,*h,*h,*h]
     const path = await makeTmpFile("bomb.yaml", yaml);
     expect(() => assertConfig(path, { a: ["x"] })).toThrow();
   });
+
+  test("2-level bomb at the 101-alias boundary is rejected", async () => {
+    // One anchor referenced 101 times in a flat list — directly exercises
+    // the maxAliasCount=100 boundary without consuming significant memory.
+    const refs = Array.from({ length: 101 }, () => "*a").join(",");
+    const yaml = `a: &a 1\nb: [${refs}]`;
+    const path = await makeTmpFile("bomb101.yaml", yaml);
+    expect(() => assertConfig(path, { a: 1 })).toThrow();
+  });
 });
 
 describe("assertConfig format option", () => {

@@ -60,6 +60,23 @@ function buildStepIndex(gherkinDoc: messages.GherkinDocument): Map<string, messa
   return index;
 }
 
+// Cucumber's compile() merges Background steps into each Pickle. For outline
+// scenarios we must strip them again — the feature-runner re-runs Background
+// explicitly before each scenario via `feature.background.steps`, so leaving
+// them in `scenario.steps` would cause Background to execute twice.
+// Plain (non-outline) scenarios use the AST directly and are unaffected.
+function buildBackgroundStepIds(gherkinDoc: messages.GherkinDocument): Set<string> {
+  const ids = new Set<string>();
+  const feature = gherkinDoc.feature;
+  if (feature === undefined) return ids;
+  for (const child of feature.children) {
+    if (child.background !== undefined) {
+      for (const step of child.background.steps) ids.add(step.id);
+    }
+  }
+  return ids;
+}
+
 function compiledStepToKeyword(
   compiledStep: messages.PickleStep,
   stepIndex: Map<string, messages.Step>,
@@ -101,8 +118,12 @@ function compiledStepToLocation(
 function compiledScenarioToScenario(
   compiled: messages.Pickle,
   stepIndex: Map<string, messages.Step>,
+  backgroundStepIds: ReadonlySet<string>,
 ): Scenario {
-  const steps: ParsedStep[] = compiled.steps.map((cs) => {
+  const scenarioOnlySteps = compiled.steps.filter(
+    (cs) => !cs.astNodeIds.some((id) => backgroundStepIds.has(id)),
+  );
+  const steps: ParsedStep[] = scenarioOnlySteps.map((cs) => {
     const keyword = compiledStepToKeyword(cs, stepIndex);
     const dataTable = compiledStepToDataTable(cs);
     const docString = cs.argument?.docString?.content;
@@ -178,6 +199,7 @@ export function parseFeature(source: string, uri: string): Feature {
   const scenarios: Scenario[] = [];
 
   const stepIndex = buildStepIndex(gherkinDoc);
+  const backgroundStepIds = buildBackgroundStepIds(gherkinDoc);
   const compiled = compile(gherkinDoc, uri, newId);
   const compiledByScenarioId = groupCompiledByScenarioId(compiled);
 
@@ -192,7 +214,9 @@ export function parseFeature(source: string, uri: string): Feature {
       const scenario = child.scenario;
       if (isOutline(scenario)) {
         const outlineScenarios = compiledByScenarioId.get(scenario.id) ?? [];
-        const mapped = outlineScenarios.map((item) => compiledScenarioToScenario(item, stepIndex));
+        const mapped = outlineScenarios.map((item) =>
+          compiledScenarioToScenario(item, stepIndex, backgroundStepIds),
+        );
         scenarios.push(...disambiguateOutlineNames(mapped));
       } else {
         const steps = scenario.steps.map((s) => mapStep(s, uri));
