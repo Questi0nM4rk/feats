@@ -3,11 +3,15 @@ import type { Tag } from "@/parser/models";
 /**
  * Evaluates a tag filter expression against a set of tags.
  *
- * Supports: `@tag`, `not @tag`, `@a and @b`, `@a or @b`, `not @a and @b`, etc.
- * Operator precedence: `not` > `and` > `or`
+ * Supports:
+ *   - `@tag`, `not @tag`
+ *   - `@a and @b`, `@a or @b`
+ *   - parentheses for grouping: `(@a or @b) and not @c`
+ *
+ * Operator precedence: `not` > `and` > `or`.
  */
 
-type TokenKind = "tag" | "and" | "or" | "not";
+type TokenKind = "tag" | "and" | "or" | "not" | "lparen" | "rparen";
 
 interface Token {
   readonly kind: TokenKind;
@@ -16,17 +20,26 @@ interface Token {
 
 function tokenize(expr: string): Token[] {
   const tokens: Token[] = [];
-  const parts = expr.trim().split(/\s+/);
+  // Insert spaces around parens so the whitespace split treats them as
+  // standalone tokens rather than glued onto a tag name.
+  const normalized = expr.replace(/\(/g, " ( ").replace(/\)/g, " ) ");
+  const parts = normalized
+    .trim()
+    .split(/\s+/)
+    .filter((p) => p !== "");
 
   for (const part of parts) {
-    if (part.toLowerCase() === "and") {
+    if (part === "(") {
+      tokens.push({ kind: "lparen", value: "(" });
+    } else if (part === ")") {
+      tokens.push({ kind: "rparen", value: ")" });
+    } else if (part.toLowerCase() === "and") {
       tokens.push({ kind: "and", value: "and" });
     } else if (part.toLowerCase() === "or") {
       tokens.push({ kind: "or", value: "or" });
     } else if (part.toLowerCase() === "not") {
       tokens.push({ kind: "not", value: "not" });
     } else {
-      // Normalize: ensure tag starts with @
       const tag = part.startsWith("@") ? part : `@${part}`;
       tokens.push({ kind: "tag", value: tag });
     }
@@ -42,11 +55,11 @@ function hasTag(tags: readonly Tag[], tagName: string): boolean {
 /**
  * Recursive descent parser for tag expressions.
  * Grammar:
- *   expr    := or_expr
- *   or_expr := and_expr ("or" and_expr)*
+ *   expr     := or_expr
+ *   or_expr  := and_expr ("or" and_expr)*
  *   and_expr := not_expr ("and" not_expr)*
  *   not_expr := "not" not_expr | atom
- *   atom    := tag
+ *   atom     := tag | "(" or_expr ")"
  */
 function parseOrExpr(tokens: Token[], pos: { index: number }, tags: readonly Tag[]): boolean {
   let left = parseAndExpr(tokens, pos, tags);
@@ -91,9 +104,19 @@ function parseAtom(tokens: Token[], pos: { index: number }, tags: readonly Tag[]
   if (token === undefined) {
     throw new Error("Malformed tag filter expression: unexpected end of input");
   }
+  if (token.kind === "lparen") {
+    pos.index++;
+    const inner = parseOrExpr(tokens, pos, tags);
+    const closing = tokens[pos.index];
+    if (closing === undefined || closing.kind !== "rparen") {
+      throw new Error(`Malformed tag filter expression: expected ')' at position ${pos.index}`);
+    }
+    pos.index++;
+    return inner;
+  }
   if (token.kind !== "tag") {
     throw new Error(
-      `Malformed tag filter expression: expected tag, got "${token.value}" at position ${pos.index}`,
+      `Malformed tag filter expression: expected tag or '(', got "${token.value}" at position ${pos.index}`,
     );
   }
   pos.index++;
@@ -105,5 +128,12 @@ export function matchesTagFilter(tags: readonly Tag[], filterExpr: string): bool
 
   const tokens = tokenize(filterExpr);
   const pos = { index: 0 };
-  return parseOrExpr(tokens, pos, tags);
+  const result = parseOrExpr(tokens, pos, tags);
+  if (pos.index < tokens.length) {
+    const trailing = tokens[pos.index];
+    throw new Error(
+      `Malformed tag filter expression: unexpected "${trailing?.value ?? ""}" at position ${pos.index}`,
+    );
+  }
+  return result;
 }

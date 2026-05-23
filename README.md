@@ -79,12 +79,57 @@ bun test
 | `loadFeatures(glob)` | Parse `.feature` files matching a glob |
 | `parseFeature(source, uri)` | Parse a feature from a string |
 | `runFeatures(features, opts?)` | Generate `bun:test` describe/test blocks |
+| `isDataTable`, `isDocString` | Type guards for step-callback trailing args |
+| `resetFeats` | Clear registry + hooks + parameter types (test isolation) |
+| `clearRegistry`, `clearHooks`, `clearParameterTypeRegistry` | Fine-grained resets |
 | `setupFixture(name, opts)` | Copy a fixture directory to a temp dir |
 | `composeFixtures(names, opts)` | Merge multiple fixture dirs into one temp dir |
 | `runCli(command, args?, opts?)` | Run a CLI process and capture output |
 | `assertConfig(filePath, expected, opts?)` | Assert JSON/TOML/YAML config file contents |
 | `assertOutput(result, expectations)` | Assert CLI output (stdout, stderr, exitCode) |
 | `createRng(seed?)` | Create a seeded deterministic RNG |
+
+## Filtering by tag
+
+Set the `FEATS_TAGS` env var to filter scenarios without changing code:
+
+```sh
+FEATS_TAGS="@smoke" bun test
+FEATS_TAGS="not @slow" bun test
+FEATS_TAGS="(@smoke or @critical) and not @wip" bun test
+```
+
+Tag expressions support `and`, `or`, `not`, and parentheses. The `opts.tagFilter`
+on `runFeatures()` takes precedence if both are set.
+
+## Better failure messages
+
+When a step has no matching definition, the error includes the feature
+location and a copy-paste-ready snippet with `{string}` / `{int}` / `{float}`
+substituted in for inline literals:
+
+```
+Undefined step at tests/features/checkout.feature:7: "I add \"Widget\" to the cart"
+
+Add a step definition:
+
+When("I add {string} to the cart", async (world, arg1) => {
+  // TODO: implement
+  throw new Error("Not implemented");
+});
+```
+
+Ambiguous-step errors get the same location prefix so you can find the
+conflict instantly.
+
+## More docs
+
+- [`docs/parameter-types.md`](./docs/parameter-types.md) — custom Gherkin params
+- [`docs/world.md`](./docs/world.md) — typed worlds, factories, sharing setup
+- [`docs/test-isolation.md`](./docs/test-isolation.md) — registry reset patterns
+- [`docs/assertions.md`](./docs/assertions.md) — `assertConfig` / `assertOutput`
+- [`docs/runCli.md`](./docs/runCli.md) — running CLIs from steps
+- [`docs/bun-plugin.md`](./docs/bun-plugin.md) — `.feature` as importable modules
 
 ## Bun plugin
 
