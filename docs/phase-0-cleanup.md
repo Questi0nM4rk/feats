@@ -1,13 +1,17 @@
 # Phase 0 — Cleanup & Foundation
 
-**Target version:** `1.0.2` (patch) — bug fixes + foundation only, no API additions.
+**Target version:** `1.0.2` (patch) — bug fixes + foundation only, **no public
+API additions** (strict semver discipline).
 
-**Goal:** Pay off internal debt, fix two correctness bugs, fill test gaps, and
-build the harness (CI + hook-kit E2E + CHANGELOG) that Phases 1 and 2 will rely on.
+**Goal:** Pay off internal debt, fix two correctness bugs, fill test gaps,
+build the harness (CI + hook-kit E2E + CHANGELOG) that Phases 1 and 2 rely on,
+and establish two safety nets: a black-box regression suite for `runFeatures`
+and a perf bench. Both are prerequisites for Phase 2's refactor and the perf
+budget enforced in later phases.
 
-**Scope discipline:** Anything that *adds* a public-facing feature belongs in
-Phase 1 or 2. Phase 0 is allowed to **export** code that already exists (e.g.
-`clearRegistry`, `clearHooks`) because that's foundation, not a feature.
+**Scope discipline:** Phase 0 ships **zero new exports**. Internal helpers may
+be added, but `src/feats.ts` does not gain a single export this phase. New
+exports land in Phase 1 (which is already a minor bump).
 
 ---
 
@@ -17,15 +21,17 @@ Phase 1 or 2. Phase 0 is allowed to **export** code that already exists (e.g.
 - Dead code removal (`scenario-runner.ts`)
 - YAML hardening
 - Test-coverage gaps in `reporting/`, `cli/`, `plugin/`, tag-filter edge cases
+- **Black-box regression test suite** for `runFeatures` (Phase 2 refactor safety net)
+- **`bench/` perf harness** with 100-scenario synthetic suite (baseline for Phase 1/2)
 - `CHANGELOG.md`, semver policy doc, contributor notes
-- CI workflow audit + gating
+- CI workflow audit + concrete gating changes
 - `scripts/e2e-hook-kit.sh` (the harness used by Phases 1 and 2)
-- Export `clearRegistry` / `clearHooks` / `clearParameterTypeRegistry` (foundation
-  for test isolation, no behavior change)
 - Docs for the under-adopted exports (`assertConfig`/`assertOutput`/`runCli`/plugin)
 
 ## Out of scope
 
+- **All new exports** (moved to Phase 1: `clearRegistry`, `clearHooks`,
+  `clearParameterTypeRegistry`, `resetFeats`, `isDataTable`, `isDocString`)
 - Any change to the runner's output format (deferred to Phase 1)
 - Any new hook, reporter, parser keyword (deferred to Phase 2)
 - Any breaking change to exports
@@ -153,47 +159,17 @@ expansion. (Setting to `0` disables aliases entirely; too strict for real config
 - [ ] Test added with a YAML file containing one legitimate alias (still works)
 - [ ] Test added with an attacker-style YAML (expands beyond 100) → throws
 
-### 0.5 DataTable type — reduce consumer friction
+### 0.5 (MOVED to Phase 1) — DataTable type guards
 
-ai-guardrails' `tests/steps/suppress.steps.ts` does a runtime guard:
-```ts
-if (typeof (table as DataTable).asLists !== "function") { /* ... */ }
-```
-This signals the type isn't trusted at the boundary. Step callbacks receive
-`...args: unknown[]`, so the consumer has to cast.
+Originally planned here, but exporting `isDataTable` / `isDocString` adds new
+public API and violates the patch-version discipline of Phase 0. See
+`phase-1-wiring.md §1.8`.
 
-**Phase 0 fix (minimal):** export type guards `isDataTable(x): x is DataTable`
-and `isDocString(x): x is string` from `@questi0nm4rk/feats`. Don't change the
-callback signature (that's a breaking change).
+### 0.6 (MOVED to Phase 1) — Test-isolation helper exports
 
-```ts
-// src/parser/models.ts — add at bottom
-export function isDataTable(x: unknown): x is DataTable {
-  return (
-    typeof x === "object" &&
-    x !== null &&
-    "rows" in x &&
-    typeof (x as DataTable).asObjects === "function" &&
-    typeof (x as DataTable).asLists === "function"
-  );
-}
-```
-
-- [ ] Added `isDataTable` and `isDocString` in `src/parser/models.ts`
-- [ ] Re-exported from `src/feats.ts`
-- [ ] Tested
-- [ ] Documented in README with a usage snippet
-
-### 0.6 Export test-isolation helpers
-
-The functions exist, are tested implicitly via feats' own tests, but are not
-public. Test files that mix step modules cannot reset between describe blocks.
-
-- [ ] Re-export `clearRegistry` from `step-registry.ts` in `feats.ts`
-- [ ] Re-export `clearHooks` from `hook-runner.ts` in `feats.ts`
-- [ ] Re-export `clearParameterTypeRegistry` from `parameter-types.ts` in `feats.ts`
-- [ ] Add a single convenience wrapper `resetFeats()` that calls all three
-- [ ] Document in README under a new "Test isolation" section
+Originally planned here, but exporting `clearRegistry` / `clearHooks` /
+`clearParameterTypeRegistry` / `resetFeats` adds new public API. See
+`phase-1-wiring.md §1.9`.
 
 ### 0.7 Test coverage gaps
 
@@ -221,14 +197,22 @@ Audit results (from initial review):
 - [ ] Add `SEMVER.md` or section in `CONTRIBUTING.md`: "1.x is non-breaking; any
       removed export requires a major bump"
 
-### 0.9 CI workflow audit
+### 0.9 CI workflow audit + gating
 
-`.github/workflows/` exists — content not yet read. Tasks:
+Concrete deliverables (not just "go read the files"):
 
-- [ ] Read each workflow file, document what runs on PR vs push vs schedule
-- [ ] Ensure `bun test`, `biome check`, `tsc --noEmit` run on every PR
-- [ ] Add a `pre-release.yml` that does a dry-run `bun publish --dry-run` on RC tags
-- [ ] Cache `bun.lock` for faster CI
+- [ ] Inventory every file in `.github/workflows/`. Record in
+      `docs/ci-inventory.md`: trigger, jobs, what fails the build.
+- [ ] **Required job on PRs:** `bun test` (all tests must pass). Add if missing.
+- [ ] **Required job on PRs:** `biome check src/ tests/` (lint must be clean).
+- [ ] **Required job on PRs:** `tsc --noEmit` (typecheck must be clean).
+- [ ] **Required job on PRs:** `bun publish --dry-run` (catches packaging bugs).
+- [ ] **New workflow** `bench.yml`: runs the bench from §0.13 on PRs that
+      touch `src/runner/**` or `src/parser/**`. Records timing; comments on PR
+      if it regresses by >10% vs `main` baseline.
+- [ ] Cache `~/.bun/install/cache` keyed on `bun.lock` hash to speed CI.
+- [ ] Branch protection: require all the above jobs to be green before merge
+      to `main`.
 
 ### 0.10 hook-kit E2E harness
 
@@ -292,6 +276,53 @@ but with no comment a future reader will have to look this up. Add a comment.
 
 - [ ] Add inline comment naming both flags
 
+### 0.13 Perf bench harness (baseline for Phase 1 & 2)
+
+**Why:** Phase 1 budgets "≤2% slowdown" and Phase 2 budgets "≤10% slowdown",
+but there's no baseline. Build one now, freeze a number, and re-run it at the
+end of each phase.
+
+**Deliverables:**
+- [ ] `bench/synthetic.feature` — 100 scenarios with mixed Given/When/Then,
+      one Background, one Scenario Outline with 10 examples
+- [ ] `bench/synthetic.steps.ts` — pure in-memory step defs (no I/O)
+- [ ] `bench/run.ts` — invokes `runFeatures()` N times, records median + p95
+- [ ] `bench/README.md` — how to run, how to interpret
+- [ ] `package.json` script: `"bench": "bun run bench/run.ts"`
+- [ ] Baseline recorded in `bench/baseline-1.0.2.json` (committed). Future
+      phases compare against this and write their own `baseline-1.x.x.json`.
+
+**Caveat:** bench must run on the same machine to be comparable. CI bench
+(§0.9) compares PR vs `main` HEAD on the same runner, not against the
+committed baseline (which is informational only across machines).
+
+### 0.14 Black-box regression suite for `runFeatures`
+
+**Why:** Phase 2 extracts a `core-runner` from `feature-runner.ts` so the CLI
+can drive it independently of `bun:test`. Without a regression suite, the
+refactor lands blind — there is no current test that pins the externally-
+observable behavior of `runFeatures` end-to-end.
+
+**Deliverables in `tests/runner/run-features.contract.test.ts`:**
+- [ ] Each Background step runs before each scenario's steps
+- [ ] Hooks fire in registration order
+- [ ] Tag filter on scenarios works (smoke for the tag-filter pathway through
+      the runner, not the tag-filter parser itself)
+- [ ] World factory is invoked exactly once per scenario
+- [ ] World is not shared between scenarios in the same feature (fresh per test)
+- [ ] Registry is snapshot at `runFeatures()` call time — subsequent
+      `clear()` does not affect the in-flight run
+- [ ] Multiple `runFeatures()` calls in the same process work independently
+- [ ] Empty feature (no scenarios) produces a `describe` with no `test`s
+- [ ] DataTable and DocString are passed as the last positional args
+- [ ] Outline scenarios receive the correct example row values
+
+Use a custom in-memory step set inside the test — don't depend on the existing
+test fixtures (they were the model for the runner's design and would
+tautologically pass).
+
+These tests become the contract Phase 2's `core-runner` must satisfy.
+
 ---
 
 ## End-to-end test plan
@@ -330,11 +361,11 @@ Run **before** tagging `v1.0.2`.
 - [ ] `bun publish --dry-run` produces a sensible tarball (no `src/`, no test
       files, `dist/` only — verify `package.json:files`)
 - [ ] `scripts/e2e-hook-kit.sh` exits 0
+- [ ] `bun run bench` produces a baseline; committed as `bench/baseline-1.0.2.json`
 - [ ] `/code-review` skill with effort=high on the full Phase 0 diff — review
       every flagged finding
 - [ ] CHANGELOG `Unreleased` section moved to `[1.0.2] - YYYY-MM-DD`
-- [ ] No new exports beyond `clearRegistry`, `clearHooks`, `clearParameterTypeRegistry`,
-      `resetFeats`, `isDataTable`, `isDocString` (all foundation, no features)
+- [ ] **Zero new exports** in `src/feats.ts` (verify with `git diff main -- src/feats.ts`)
 - [ ] No file in `src/` exceeds the 200-line cap from `.cc-review.yaml`
 
 ---

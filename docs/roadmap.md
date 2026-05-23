@@ -88,3 +88,65 @@ you want to overturn before Phase 0 starts.
   today (`parser/adapter.ts` does not branch on `child.rule`); making it a no-op
   is OK as long as no consumer uses it yet (verified — none do).
 - **D5**: Tag-filter parens land in Phase 1, not Phase 2 (small, isolated change).
+- **D6**: `failOnPending` defaults to `false`. Matches Cucumber across all major
+  implementations.
+- **D7**: File-output reporters (JUnit XML, Cucumber JSON) are first-class
+  under the CLI, "best-effort" under multi-file `bun test`. Filename pattern
+  with `{n}` placeholder supported; same-path collision throws fail-fast.
+- **D8**: `BeforeAll`/`AfterAll` tag filter = "run if ≥1 scenario in the
+  feature matches the filter" (single pre-pass over `feature.scenarios`).
+
+## Revision log
+
+### Rev 1 — post-first-read audit
+
+After writing the initial plan and re-reading with fresh eyes, surfaced 8
+caveats and made 4 reshuffles. Summary:
+
+**Caveats addressed:**
+1. **Semver violation in Phase 0.** New exports (`clearRegistry`, etc.) are
+   API additions, not bug fixes — would have forced a minor bump while still
+   targeting `1.0.2`. Fix: moved all 6 new exports to Phase 1.
+2. **No safety net for Phase 2's `core-runner` extraction.** Fix: added Phase
+   0 §0.14 — black-box regression suite for `runFeatures` that Phase 2 must
+   pass unchanged.
+3. **No perf baseline.** Phase 1 and 2 reference budgets without one. Fix:
+   added Phase 0 §0.13 — `bench/` harness with committed baseline file per
+   release.
+4. **bun:test ↔ CLI "run" semantics tension.** File reporters write one file
+   per "run", but a "run" means different things under each mode. Fix:
+   documented in Phase 2 architecture; D7 above.
+5. **Reporter contract collides with Phase 1's error wrap.** Fix: Phase 1
+   now documents the contract — reporters see raw `step` + `error`; the
+   wrap is a `bun:test` rendering helper only.
+6. **`BeforeAll` tag-filter semantics undefined.** Fix: D8 above.
+7. **Snippet generator without placeholder substitution is half a feature.**
+   Fix: promoted Phase 1 §1.7 from "optional polish" to required, with
+   defined substitution rules.
+8. **Phase 0.9 CI audit was research-shaped, not deliverable-shaped.** Fix:
+   rewrote with concrete required jobs, branch protection, bench workflow.
+
+**Reshuffles applied:**
+- Phase 0 → Phase 1: `clearRegistry`, `clearHooks`, `clearParameterTypeRegistry`,
+  `resetFeats`, `isDataTable`, `isDocString` (now Phase 1 §1.8 and §1.9)
+- Phase 0 added: §0.13 perf bench, §0.14 regression suite
+- Phase 1: §1.7 promoted from optional to required
+- Phase 0.9 rewritten with concrete deliverables
+
+**Net effect on phase shape:**
+- Phase 0 is slightly *larger* (gained bench + regression suite) but strictly
+  scoped (no exports). Still targets `1.0.2`.
+- Phase 1 is slightly *larger* (gained 6 exports + promoted snippet sub).
+  Still targets `1.1.0`.
+- Phase 2 unchanged in scope but has clearer architectural decisions.
+
+**Items NOT moved (considered and rejected):**
+- `Rule:` keyword to Phase 0 — would expand Phase 0's semantic surface
+  (model decisions about tag inheritance, background merging) for no
+  consumer-visible benefit. Stays in Phase 2.
+- `BeforeAll`/`AfterAll` to Phase 1 — small enough to fit, but breaks the
+  Phase 1 theme ("wire dead code + DX wins around errors"). Stays in Phase 2.
+- `pending()` to Phase 1 — without reporter visualization (yellow ~, JUnit
+  `<skipped>`, Cucumber `"pending"`), it would just be a silently-passing
+  test, weaker than the current "step throws Not Implemented" pattern.
+  Stays in Phase 2 alongside reporters.

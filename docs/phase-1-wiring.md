@@ -19,11 +19,15 @@ Phase 1 builds on the now-clean baseline.
 
 - Wire `formatStepError` into runner failures
 - Wire `generateStepSnippet` into the undefined-step error
+- **Snippet placeholder substitution** (so generated snippets actually match
+  parameterized steps, not just the literal example)
 - Add `uri:line` context to ambiguous-step errors
 - `FEATS_TAGS` env var as default `tagFilter`
 - Tag-filter parens (`(@a or @b) and not @c`)
 - `defineParameterType` documentation + canonical examples
 - Documentation for `World` generics and shared step modules
+- **Public exports moved from Phase 0** (test-isolation helpers and type guards
+  — see §1.8 and §1.9). These force the minor bump to `1.1.0`.
 
 ## Out of scope
 
@@ -31,6 +35,15 @@ Phase 1 builds on the now-clean baseline.
 - New keywords or lifecycle hooks (Phase 2)
 - CLI binary (Phase 2)
 - Anything that changes step-callback signatures
+
+## Design contract for Phase 2
+
+**Phase 1 wraps step errors via `new Error(formatStepError(step, err), { cause: err })`.
+This is the `bun:test` rendering helper, not the runner's contract with reporters.**
+When Phase 2 introduces the reporter interface, reporters receive the raw `step`
+and raw `error` (the `cause`), not the wrapped Error. The wrap exists only so
+that `bun:test`'s default reporter (when no Phase 2 reporters are registered)
+shows Gherkin context. Document this in Phase 2 and in `docs/reporters.md`.
 
 ---
 
@@ -237,24 +250,113 @@ Both consumers have rich World interfaces. The README says little about it.
   - Sharing setup via module-scope (hook-kit pattern)
 - [ ] README links
 
-### 1.7 Snippet improvements (small polish)
+### 1.7 Snippet placeholder substitution (REQUIRED)
 
-`src/reporting/pending-steps.ts:generateStepSnippet` produces:
+**Why this is no longer "optional":** Without substitution, the snippet for
+`When I add "Widget" to the cart` is
+
+```ts
+When("I add \"Widget\" to the cart", async (world) => { /* ... */ });
 ```
-Given("the cart is empty", async (world) => {
+
+This pattern matches *only* the literal string `"Widget"`. A user copying it
+into their step file gets a step that breaks the next time the example changes
+to `"Gadget"`. The whole point of wiring the snippet (§1.2) is to give users a
+working starting point. Without substitution, we're shipping a half-feature.
+
+**Substitution rules (start simple, expand cautiously):**
+
+| In the step text  | Becomes in the pattern | Becomes in the callback args |
+|-------------------|------------------------|------------------------------|
+| `"..."` (any quoted string) | `{string}` | `arg1: string` |
+| Bare integer `42` | `{int}`    | `arg2: number` |
+| Bare decimal `3.14` | `{float}` | `arg3: number` |
+
+Example: `When I add "Widget" 3 times for $9.99` →
+
+```ts
+When("I add {string} {int} times for ${float}", async (world, name, count, price) => {
   // TODO: implement
   throw new Error("Not implemented");
 });
 ```
 
-Improvements while we're here:
-- [ ] Replace literal cucumber parameters with placeholders: a step like
-      `I add "Widget" to the cart` should become
-      `When("I add {string} to the cart", async (world, item) => {...})`
-- [ ] Detect numeric literals → `{int}` or `{float}`
+**Implementation:**
+- New helper in `src/reporting/pending-steps.ts` that walks the step text,
+  replaces matches with cucumber-expression placeholders, and accumulates the
+  callback parameter list with sensibly-named args.
+- Naming heuristic: derive from preceding word (`name`, `count`, `price`) or
+  fall back to `arg1`, `arg2`, etc.
 
-These are optional polish — implement if time permits, defer to a future
-patch otherwise.
+**Out of scope for Phase 1** (defer to future patch if useful):
+- Custom parameter type detection (e.g., recognize `<email>` patterns)
+- Plural detection
+- Punctuation handling beyond basic quotes and numbers
+
+**Tests:**
+- [ ] Literal quoted string → `{string}` + named arg
+- [ ] Bare integer → `{int}`
+- [ ] Bare decimal → `{float}`
+- [ ] Mixed: all three in one step
+- [ ] No substitutable tokens → snippet unchanged (regression)
+- [ ] Step with backslashes/quotes in non-substituted parts → still escaped correctly
+
+- [ ] Implemented
+- [ ] Tests pass
+- [ ] hook-kit smoke: comment out a step in hook-kit, confirm generated
+      snippet is copy-paste-correct without edits
+
+### 1.8 New export: DataTable / DocString type guards
+
+Moved here from Phase 0 (was 0.5) because new exports require a minor bump.
+
+ai-guardrails' `tests/steps/suppress.steps.ts` does a runtime guard:
+```ts
+if (typeof (table as DataTable).asLists !== "function") { /* ... */ }
+```
+This signals the type isn't trusted at the boundary. Step callbacks receive
+`...args: unknown[]`, so the consumer has to cast. Type guards close the gap
+without changing the callback signature (which would be breaking).
+
+```ts
+// src/parser/models.ts — add at bottom
+export function isDataTable(x: unknown): x is DataTable {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    "rows" in x &&
+    typeof (x as DataTable).asObjects === "function" &&
+    typeof (x as DataTable).asLists === "function"
+  );
+}
+
+export function isDocString(x: unknown): x is string {
+  return typeof x === "string";
+}
+```
+
+- [ ] Added `isDataTable` and `isDocString` in `src/parser/models.ts`
+- [ ] Re-exported from `src/feats.ts`
+- [ ] Tested (positive: real DataTable; negative: plain object, null, undefined,
+      string for isDataTable)
+- [ ] Documented in README with a usage snippet showing the ai-guardrails-style
+      pattern simplified
+
+### 1.9 New exports: test-isolation helpers
+
+Moved here from Phase 0 (was 0.6) because new exports require a minor bump.
+
+The functions exist internally. Test files that mix step modules need a way
+to reset between describe blocks.
+
+- [ ] Re-export `clearRegistry` from `step-registry.ts` in `feats.ts`
+- [ ] Re-export `clearHooks` from `hook-runner.ts` in `feats.ts`
+- [ ] Re-export `clearParameterTypeRegistry` from `parameter-types.ts` in `feats.ts`
+- [ ] Add a single convenience wrapper `resetFeats()` in a new
+      `src/state/reset.ts` that calls all three
+- [ ] Re-export `resetFeats` from `feats.ts`
+- [ ] Document in README under a new "Test isolation" section, with a
+      `beforeEach(resetFeats)` example
 
 ---
 
@@ -306,11 +408,15 @@ Deliberately break hook-kit and confirm new errors land:
 - [ ] `/code-review` skill with effort=high on the Phase 1 diff
 - [ ] CHANGELOG `Unreleased` → `[1.1.0] - YYYY-MM-DD` with all entries
 - [ ] README updated with sections for: new error format, FEATS_TAGS, tag-filter
-      parens, parameter types, World docs
+      parens, parameter types, World docs, test-isolation helpers
 - [ ] No file exceeds 200-line cap
-- [ ] No new top-level export beyond what's listed above
-- [ ] Performance: a 100-scenario run with `formatStepError` wrapping must not
-      slow runs by more than 2% vs Phase 0 baseline (measure with hyperfine)
+- [ ] Public exports added in this phase, no others: `clearRegistry`,
+      `clearHooks`, `clearParameterTypeRegistry`, `resetFeats`, `isDataTable`,
+      `isDocString`. Verify with `git diff v1.0.2 -- src/feats.ts`.
+- [ ] Performance: `bun run bench` median time within 2% of
+      `bench/baseline-1.0.2.json`; if exceeded, profile before merge
+- [ ] Snippet substitution: paste a generated snippet from a hook-kit
+      undefined-step error directly into the step file; it works without edits
 
 ---
 

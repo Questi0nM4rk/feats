@@ -8,9 +8,19 @@ migrating off SpecFlow: pretty console output, JUnit XML for CI, Cucumber JSON
 for downstream tooling, `Rule:` keyword, lifecycle hooks beyond per-scenario,
 and a real CLI.
 
-**Phase 0/1 dependencies:** Phase 1's `formatStepError` wiring is reused by the
-pretty reporter. Phase 0's After-hook accumulation is needed for the
-reporter's failure aggregation to be accurate.
+**Phase 0/1 dependencies:**
+- **Phase 0 §0.14** — black-box `runFeatures` regression suite. Phase 2
+  extracts a `core-runner` (§2.9) that the CLI drives independently of
+  `bun:test`. Without §0.14 the refactor is unsafe.
+- **Phase 0 §0.13** — `bench/` harness. Phase 2's perf budget is "≤10% over
+  Phase 1 baseline" — this requires committed baseline files from both phases.
+- **Phase 1 design contract** — reporters receive the raw `step` and raw
+  `error`, NOT the `formatStepError`-wrapped one. The wrap is `bun:test`'s
+  default rendering fallback only. Phase 2 reporters render their own way
+  using `result.error` (= the `cause` of the wrap if it bubbled up, or the
+  raw error if intercepted before bun:test sees it).
+- **Phase 0 §0.1** — After-hook accumulation. Reporter failure events depend on
+  knowing whether the step failed, a hook failed, or both.
 
 ---
 
@@ -92,6 +102,35 @@ export interface RunOptions {
 Each step is timed. Result is emitted as `onStep`. Scenario aggregate emitted as
 `onScenarioEnd`. `onRunEnd` fires inside an `afterAll(...)` registered in the
 outermost describe.
+
+### "Run" semantics — the bun:test ↔ CLI tension
+
+A "run" means different things under each mode:
+
+| Mode | One run = | `onRunStart` fires | `onRunEnd` fires |
+|------|-----------|-------------------|------------------|
+| `bun test` (one `.test.ts` calls `runFeatures()`) | one `runFeatures()` call | top of describe | bun:test's `afterAll` of that describe |
+| `bun test` (N `.test.ts` files each call `runFeatures()`) | each `runFeatures()` call is its OWN run | N times | N times |
+| CLI (`bunx feats <glob>`) | the whole suite | once | once |
+
+**The problem:** file-output reporters (JUnit XML, Cucumber JSON) need to
+write *one* file per "run". Under `bun test` with multiple `.test.ts` files,
+they'd write N files (or clobber each other into one). Under the CLI, one
+file. Confusing.
+
+**Decision:**
+- **CLI is the supported path for file-output reporters.** Recommended in
+  docs as the way to get clean JUnit XML / Cucumber JSON for CI.
+- **`bun test` mode** still works for the pretty reporter (which writes to
+  stdout and is naturally per-file). File reporters under `bun test` get a
+  warning at construction: "writes one file per runFeatures() call; use the
+  CLI for unified output."
+- File reporters take a `filename` *pattern* with `{n}` placeholder
+  (e.g., `junit-{n}.xml`) for the `bun test` multi-file case. If `{n}` is
+  absent and the same path is requested twice, throw on construction of the
+  second instance (fail-fast).
+
+Document this prominently in `docs/reporters.md`.
 
 ---
 
@@ -226,11 +265,26 @@ export function BeforeAll(tagFilter: string, callback: () => Promise<void> | voi
 Note: these do **not** receive a `world` argument (no per-scenario world at this
 scope). If a user needs shared state, they share it via module scope.
 
+**Tag-filter semantics (decision):** A tag-filtered `BeforeAll` / `AfterAll`
+runs when **at least one scenario in the feature would be selected by that
+filter**. Computing this requires a single pre-pass over `feature.scenarios`
+before entering `describe`. Cost is O(scenarios × tag-eval); negligible since
+both are small.
+
+Alternatives considered:
+- *Always run, ignore tag filter on BeforeAll/AfterAll* (cucumber-js
+  approach) — rejected: surprises users who write `BeforeAll("@db", ...)`
+  expecting it to mean "only when @db scenarios are present".
+- *Re-evaluate per scenario* — wrong semantics; would fire once per matching
+  scenario, defeating the "once per feature" contract.
+
 - [ ] Implemented in `hook-runner.ts`
 - [ ] Wired into `feature-runner.ts` via `beforeAll`/`afterAll` inside `describe`
-- [ ] Tag filter: applies if **any** scenario in the feature matches the filter
-- [ ] Tests
-- [ ] README documents the world-less signature
+- [ ] Tag-filter pre-pass implemented
+- [ ] Tests including: no-tag-filter case, tag-filter matches some scenarios,
+      tag-filter matches no scenarios (hook does NOT run)
+- [ ] README documents the world-less signature AND the tag-filter pre-pass
+      semantics
 
 ### 2.7 `BeforeStep` / `AfterStep`
 
@@ -271,10 +325,14 @@ emit a console warning. Open question: hard-fail in CI vs warn locally.
 via `RunOptions.failOnPending: boolean = false`. Default is non-failing (CI
 will see yellow in pretty / JUnit XML output, but tests pass).
 
+**Decision locked:** `failOnPending` defaults to `false`. This matches Cucumber
+across all major implementations. CI users opt into stricter behavior.
+
 - [ ] `PendingError` class + `pending()` helper
 - [ ] Runner catches `PendingError` separately from generic Error
 - [ ] Reporter `StepStatus = "pending"` flows through to pretty + JUnit + JSON
-- [ ] `failOnPending` option respected
+- [ ] `failOnPending: false` is the default — verified by a test
+- [ ] `failOnPending: true` flips to hard fail — verified by a test
 - [ ] Tests
 
 ### 2.9 `feats` CLI binary
@@ -311,9 +369,19 @@ feats <glob> [<glob>...]
 events. The existing `runFeatures()` (bun:test mode) becomes a thin adapter
 that wraps `core-runner` + dispatches `describe`/`test`.
 
+**Safety net (from Phase 0 §0.14):** the black-box regression suite
+`tests/runner/run-features.contract.test.ts` pins the externally-observable
+behavior of `runFeatures`. The refactor is "done" when the new
+`core-runner` + `runFeatures` adapter passes the entire contract suite
+unchanged.
+
+- [ ] Phase 0 §0.14 contract suite is green on `main` (baseline)
 - [ ] `src/runner/core-runner.ts` extracted — pure reporter dispatch, no
       bun:test imports
 - [ ] `runFeatures()` (existing) wraps `core-runner` + bun:test
+- [ ] All §0.14 contract tests still pass post-refactor (zero changes to
+      those tests allowed; if they need to change, the refactor changed
+      observable behavior and the change must be called out and approved)
 - [ ] `src/cli/feats-bin.ts` calls `core-runner` directly
 - [ ] `package.json:bin` points to dist of CLI
 - [ ] Help / version commands
