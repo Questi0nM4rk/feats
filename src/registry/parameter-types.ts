@@ -19,6 +19,10 @@ export function defineParameterType(opts: {
   transformer: (value: string) => unknown;
 }): void {
   const registry = getParameterTypeRegistry();
+  // ParameterType positional args (from @cucumber/cucumber-expressions):
+  //   (name, regexp, type, transformer, useForSnippets, preferForRegexpMatch)
+  // useForSnippets=true       → snippet generator may suggest this type for matching steps
+  // preferForRegexpMatch=false → does not override built-in types ({string}, {int}, ...)
   const paramType = new ParameterType(opts.name, opts.regexp, null, opts.transformer, true, false);
   registry.defineParameterType(paramType);
 }

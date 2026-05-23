@@ -1,0 +1,76 @@
+name: Bench
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/parser/**"
+      - "src/runner/**"
+      - "src/registry/**"
+      - "bench/**"
+      - ".github/workflows/bench.yml"
+
+jobs:
+  bench:
+    name: Compare PR median vs main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check that main has bench infrastructure
+        id: gate
+        run: |
+          git fetch origin main
+          if git cat-file -e "origin/main:bench/run.ts" 2>/dev/null; then
+            echo "has_bench=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_bench=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::main does not yet contain bench/run.ts — skipping comparison. This job will compare normally on subsequent PRs once bench/ lands on main."
+          fi
+
+      - name: Bench PR
+        if: steps.gate.outputs.has_bench == 'true'
+        run: bun run bench
+      - name: Save PR result
+        if: steps.gate.outputs.has_bench == 'true'
+        run: cp bench/last-run.json /tmp/pr.json
+
+      - name: Checkout main bench tree
+        if: steps.gate.outputs.has_bench == 'true'
+        run: git checkout origin/main -- src bench package.json bun.lock
+
+      - name: Install main deps
+        if: steps.gate.outputs.has_bench == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Bench main
+        if: steps.gate.outputs.has_bench == 'true'
+        run: bun run bench
+      - name: Save main result
+        if: steps.gate.outputs.has_bench == 'true'
+        run: cp bench/last-run.json /tmp/main.json
+
+      - name: Compare
+        if: steps.gate.outputs.has_bench == 'true'
+        run: |
+          PR_MEDIAN=$(jq -r '.medianMs' /tmp/pr.json)
+          MAIN_MEDIAN=$(jq -r '.medianMs' /tmp/main.json)
+          echo "PR median:   ${PR_MEDIAN}ms"
+          echo "main median: ${MAIN_MEDIAN}ms"
+          # Allow 10% regression
+          LIMIT=$(echo "$MAIN_MEDIAN * 1.10" | bc -l)
+          REGRESSED=$(echo "$PR_MEDIAN > $LIMIT" | bc -l)
+          if [ "$REGRESSED" -eq 1 ]; then
+            echo "::error::Perf regression: PR median ${PR_MEDIAN}ms > 110% of main (${LIMIT}ms)"
+            exit 1
+          fi
+          echo "Within budget."
