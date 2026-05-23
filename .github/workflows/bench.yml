@@ -26,25 +26,41 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Bench PR
-        run: bun run bench
-      - name: Save PR result
-        run: cp bench/last-run.json /tmp/pr.json
-
-      - name: Checkout main
+      - name: Check that main has bench infrastructure
+        id: gate
         run: |
           git fetch origin main
-          git checkout origin/main -- src bench package.json bun.lock
+          if git cat-file -e "origin/main:bench/run.ts" 2>/dev/null; then
+            echo "has_bench=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_bench=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::main does not yet contain bench/run.ts — skipping comparison. This job will compare normally on subsequent PRs once bench/ lands on main."
+          fi
+
+      - name: Bench PR
+        if: steps.gate.outputs.has_bench == 'true'
+        run: bun run bench
+      - name: Save PR result
+        if: steps.gate.outputs.has_bench == 'true'
+        run: cp bench/last-run.json /tmp/pr.json
+
+      - name: Checkout main bench tree
+        if: steps.gate.outputs.has_bench == 'true'
+        run: git checkout origin/main -- src bench package.json bun.lock
 
       - name: Install main deps
+        if: steps.gate.outputs.has_bench == 'true'
         run: bun install --frozen-lockfile
 
       - name: Bench main
+        if: steps.gate.outputs.has_bench == 'true'
         run: bun run bench
       - name: Save main result
+        if: steps.gate.outputs.has_bench == 'true'
         run: cp bench/last-run.json /tmp/main.json
 
       - name: Compare
+        if: steps.gate.outputs.has_bench == 'true'
         run: |
           PR_MEDIAN=$(jq -r '.medianMs' /tmp/pr.json)
           MAIN_MEDIAN=$(jq -r '.medianMs' /tmp/main.json)

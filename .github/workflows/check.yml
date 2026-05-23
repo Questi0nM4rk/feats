@@ -71,5 +71,9 @@ jobs:
           bun run build
           bun run build:types
 
-      - name: Dry-run publish
-        run: bun publish --dry-run
+      - name: Pack (dry run)
+        # Validates that the tarball builds cleanly with the configured
+        # `files` entry. `bun publish --dry-run` insists on npm auth even
+        # for dry-runs; `npm pack --dry-run` does the same validation
+        # without authentication and prints the file list.
+        run: npm pack --dry-run
