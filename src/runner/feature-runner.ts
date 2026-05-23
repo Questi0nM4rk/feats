@@ -50,7 +50,8 @@ export function runFeatures(features: readonly Feature[], opts?: RunOptions): vo
         test(scenario.name, async () => {
           const world = worldFactory();
 
-          let beforeError: unknown;
+          let stepError: unknown;
+          const afterErrors: unknown[] = [];
 
           try {
             for (const hook of beforeHooks) {
@@ -64,17 +65,32 @@ export function runFeatures(features: readonly Feature[], opts?: RunOptions): vo
             }
             await runSteps(world, scenario.steps, definitions);
           } catch (err: unknown) {
-            beforeError = err;
+            stepError = err;
           } finally {
+            // After hooks always run, even on step failure. Their errors are
+            // collected (not thrown immediately) so we can report both step
+            // and hook failures without one masking the other.
             for (const hook of afterHooks) {
               if (hook.tagFilter === undefined || matchesTagFilter(scenarioTags, hook.tagFilter)) {
-                await hook.callback(world);
+                try {
+                  await hook.callback(world);
+                } catch (hookErr: unknown) {
+                  afterErrors.push(hookErr);
+                }
               }
             }
           }
 
-          if (beforeError !== undefined) {
-            throw beforeError;
+          if (stepError !== undefined && afterErrors.length > 0) {
+            throw new AggregateError(
+              [stepError, ...afterErrors],
+              "Scenario failed; After hook(s) also threw",
+            );
+          }
+          if (stepError !== undefined) throw stepError;
+          if (afterErrors.length === 1) throw afterErrors[0];
+          if (afterErrors.length > 1) {
+            throw new AggregateError(afterErrors, "After hook(s) threw");
           }
         });
       }
