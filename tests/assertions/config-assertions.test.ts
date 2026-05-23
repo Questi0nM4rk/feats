@@ -98,6 +98,79 @@ describe("assertConfig YAML", () => {
     const path = await makeTmpFile("config.yaml", "name: wrong\n");
     expect(() => assertConfig(path, { name: "test" })).toThrow("name:");
   });
+
+  test("accepts modest alias use (legitimate)", async () => {
+    // 5 references to one anchor — well under the 100-alias cap.
+    const yaml = `
+host: &h "db.example.com"
+primary: *h
+replica_a: *h
+replica_b: *h
+replica_c: *h
+replica_d: *h
+`;
+    const path = await makeTmpFile("aliases.yaml", yaml);
+    expect(() =>
+      assertConfig(path, { primary: "db.example.com", replica_a: "db.example.com" }),
+    ).not.toThrow();
+  });
+
+  test("rejects billion-laughs alias expansion", async () => {
+    // 9-level nesting where each level references the previous 9 times.
+    // Without maxAliasCount, this expands to 9^9 = 387M references.
+    const yaml = `
+a: &a ["x","x","x","x","x","x","x","x","x"]
+b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a]
+c: &c [*b,*b,*b,*b,*b,*b,*b,*b,*b]
+d: &d [*c,*c,*c,*c,*c,*c,*c,*c,*c]
+e: &e [*d,*d,*d,*d,*d,*d,*d,*d,*d]
+f: &f [*e,*e,*e,*e,*e,*e,*e,*e,*e]
+g: &g [*f,*f,*f,*f,*f,*f,*f,*f,*f]
+h: &h [*g,*g,*g,*g,*g,*g,*g,*g,*g]
+i: [*h,*h,*h,*h,*h,*h,*h,*h,*h]
+`;
+    const path = await makeTmpFile("bomb.yaml", yaml);
+    expect(() => assertConfig(path, { a: ["x"] })).toThrow();
+  });
+
+  test("YAML anchor used in a nested map value is resolved correctly", async () => {
+    // Aliases pointing to an object value (not just scalars) should expand correctly
+    // within the 100-alias cap.
+    const yaml = `
+shared: &shared
+  timeout: 30
+  retries: 3
+
+primary: *shared
+secondary: *shared
+`;
+    const path = await makeTmpFile("nested-alias.yaml", yaml);
+    // Both primary and secondary should equal the shared object
+    expect(() =>
+      assertConfig(path, {
+        primary: { timeout: 30, retries: 3 },
+        secondary: { timeout: 30, retries: 3 },
+      }),
+    ).not.toThrow();
+  });
+
+  test("YAML single self-referencing anchor is resolved correctly", async () => {
+    // One anchor, one alias — canonical simple use case.
+    const yaml = `
+value: &val 42
+copy: *val
+`;
+    const path = await makeTmpFile("self-ref.yaml", yaml);
+    expect(() => assertConfig(path, { value: 42, copy: 42 })).not.toThrow();
+  });
+
+  test("YAML multi-key document with aliases in array values works within cap", async () => {
+    // 10 references to the same scalar anchor — well within the 100 cap.
+    const items = Array.from({ length: 10 }, (_, i) => `  - *base`).join("\n");
+    const yaml = `base: &base "shared"\nlist:\n${items}\n`;
+    const path = await makeTmpFile("array-aliases.yaml", yaml);
+    expect(() => assertConfig(path, { base: "shared" })).not.toThrow();
+  });
 });
 
 describe("assertConfig format option", () => {
