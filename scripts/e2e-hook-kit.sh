@@ -42,4 +42,17 @@ bun link @questi0nm4rk/feats
 echo "==> Running hook-kit feature tests"
 bun test tests/features/
 
+echo "==> Running hook-kit feature tests with FEATS_REPORTERS=pretty (verify reporter pipeline)"
+PRETTY_OUTPUT="$(FEATS_REPORTERS=pretty NO_COLOR=1 bun test tests/features/ 2>&1)"
+echo "$PRETTY_OUTPUT" | tail -30
+if ! echo "$PRETTY_OUTPUT" | grep -q "Feature:"; then
+  echo "FAIL: PrettyReporter did not emit 'Feature:' header" >&2
+  exit 1
+fi
+if ! echo "$PRETTY_OUTPUT" | grep -qE "[0-9]+ scenario"; then
+  echo "FAIL: PrettyReporter did not emit a run summary" >&2
+  exit 1
+fi
+echo "==> PrettyReporter pipeline works"
+
 echo "==> hook-kit feature tests passed"

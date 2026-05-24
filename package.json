@@ -1,6 +1,6 @@
 {
   "name": "@questi0nm4rk/feats",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "BDD/Gherkin test framework for Bun — feature testing with typed step definitions",
   "type": "module",
   "exports": {
