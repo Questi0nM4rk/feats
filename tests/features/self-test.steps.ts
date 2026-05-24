@@ -57,7 +57,13 @@ When("I match against {string}", (world: SelfTestWorld, text: unknown) => {
   const matchText = typeof text === "string" ? text : String(text);
   const registry = world.stepRegistry;
   if (registry === undefined) throw new Error("stepRegistry not set");
-  const result = matchStep(registry.getAll(), matchText);
+  const result = matchStep(registry.getAll(), {
+    keyword: "When",
+    text: matchText,
+    dataTable: undefined,
+    docString: undefined,
+    location: { uri: "self-test.feature", line: 0 },
+  });
   world.matchArg = result.args[0];
 });
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import type { ParsedStep } from "@/parser/models";
 import { matchStep } from "@/registry/expression-adapter";
 import {
   clearParameterTypeRegistry,
@@ -6,6 +7,14 @@ import {
   getParameterTypeRegistry,
 } from "@/registry/parameter-types";
 import type { StepDefinition } from "@/registry/step-definition";
+
+const stepFor = (text: string): ParsedStep => ({
+  keyword: "Given",
+  text,
+  dataTable: undefined,
+  docString: undefined,
+  location: { uri: "tests/sample.feature", line: 1 },
+});
 
 beforeEach(() => {
   clearParameterTypeRegistry();
@@ -38,7 +47,7 @@ describe("defineParameterType", () => {
       },
     ];
 
-    const result = matchStep(defs, "the background is red");
+    const result = matchStep(defs, stepFor("the background is red"));
     expect(result.args[0]).toBe("RED");
   });
 
@@ -57,7 +66,7 @@ describe("defineParameterType", () => {
       },
     ];
 
-    const result = matchStep(defs, "multiplied value is 5");
+    const result = matchStep(defs, stepFor("multiplied value is 5"));
     expect(result.args[0]).toBe(10);
   });
 

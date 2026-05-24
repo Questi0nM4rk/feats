@@ -96,12 +96,62 @@ describe("matchesTagFilter — malformed expressions", () => {
   });
 
   test("operator at start throws", () => {
-    expect(() => matchesTagFilter(tags("@a"), "and @a")).toThrow(/Malformed|expected tag/);
+    expect(() => matchesTagFilter(tags("@a"), "and @a")).toThrow(/Malformed/);
   });
 
   test("two operators in a row throws", () => {
-    expect(() => matchesTagFilter(tags("@a", "@b"), "@a and and @b")).toThrow(
-      /Malformed|expected tag/,
-    );
+    expect(() => matchesTagFilter(tags("@a", "@b"), "@a and and @b")).toThrow(/Malformed/);
+  });
+});
+
+describe("matchesTagFilter — parentheses (§1.4)", () => {
+  test("parens override default precedence: (a or b) and c", () => {
+    // Without parens: a or b and c = a or (b and c)
+    // With parens: (a or b) and c
+    // Has @a and @c → true under either grouping
+    expect(matchesTagFilter(tags("@a", "@c"), "(@a or @b) and @c")).toBe(true);
+    // Has @a only → without parens TRUE (a alone matches); with parens FALSE
+    // (needs @c).
+    expect(matchesTagFilter(tags("@a"), "(@a or @b) and @c")).toBe(false);
+    // Has @c only → false under both groupings
+    expect(matchesTagFilter(tags("@c"), "(@a or @b) and @c")).toBe(false);
+    // Has @b and @c → true
+    expect(matchesTagFilter(tags("@b", "@c"), "(@a or @b) and @c")).toBe(true);
+  });
+
+  test("not applies to parenthesized expression: not (a and b)", () => {
+    // De Morgan: not (a and b) = (not a) or (not b)
+    expect(matchesTagFilter(tags("@a", "@b"), "not (@a and @b)")).toBe(false);
+    expect(matchesTagFilter(tags("@a"), "not (@a and @b)")).toBe(true);
+    expect(matchesTagFilter(tags("@b"), "not (@a and @b)")).toBe(true);
+    expect(matchesTagFilter(tags(), "not (@a and @b)")).toBe(true);
+  });
+
+  test("nested parens", () => {
+    expect(matchesTagFilter(tags("@a"), "((@a))")).toBe(true);
+    expect(matchesTagFilter(tags("@b"), "((@a))")).toBe(false);
+    expect(matchesTagFilter(tags("@a", "@c"), "((@a or @b) and (@c or @d))")).toBe(true);
+    expect(matchesTagFilter(tags("@a"), "((@a or @b) and (@c or @d))")).toBe(false);
+  });
+
+  test("parens with no space adjacent to tags still tokenize", () => {
+    // Common authoring style: `(@a)` with no spaces.
+    expect(matchesTagFilter(tags("@a"), "(@a)")).toBe(true);
+    expect(matchesTagFilter(tags("@a", "@b"), "(@a)and @b")).toBe(true);
+  });
+
+  test("unmatched opening paren throws", () => {
+    expect(() => matchesTagFilter(tags("@a"), "(@a and @b")).toThrow(/expected '\)'/);
+  });
+
+  test("unmatched closing paren throws", () => {
+    // Extra `)` after a valid expression is rejected at end-of-input check.
+    expect(() => matchesTagFilter(tags("@a"), "@a)")).toThrow(/Malformed/);
+    // `)` where a tag is expected is rejected by parseAtom.
+    expect(() => matchesTagFilter(tags("@a"), "and @a)")).toThrow(/Malformed/);
+  });
+
+  test("empty parens throw", () => {
+    expect(() => matchesTagFilter(tags("@a"), "()")).toThrow(/Malformed/);
   });
 });
