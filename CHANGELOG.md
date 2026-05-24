@@ -8,6 +8,48 @@ See [`SEMVER.md`](./SEMVER.md) for the project's stability policy.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-05-23
+
+Phase 1 of the roadmap. Wires the existing dead code in `src/reporting/` into
+the runner and adds small DX features. Non-breaking — purely additive.
+
+### Added
+- **Step failures now include Gherkin context.** When a step throws, the
+  runner wraps the error via `formatStepError` so `bun:test`'s default
+  rendering shows `uri:line`, the keyword + step text, and the original
+  error message. Original error remains reachable via `error.cause`
+  (`src/runner/feature-runner.ts`).
+- **Undefined-step errors carry `uri:line` + a working code snippet.** The
+  snippet substitutes inline literals — `"Widget"` becomes `{string}`, `3`
+  becomes `{int}`, `9.99` becomes `{float}` — and lists generic numbered
+  args (`arg1`, `arg2`, ...) so the pasted snippet matches the step
+  immediately (`src/registry/expression-adapter.ts`, `src/reporting/pending-steps.ts`).
+- **Ambiguous-step errors also include `uri:line`** plus the conflicting
+  patterns (`src/registry/expression-adapter.ts`).
+- **`FEATS_TAGS` env var** as the default tag filter when `opts.tagFilter`
+  is unset. Lets CI filter scenarios without code changes
+  (`src/runner/feature-runner.ts`).
+- **Parentheses in tag-filter expressions.** `(@a or @b) and not @c`,
+  `not (@a and @b)`, nested groups. Trailing tokens are now rejected as
+  malformed (previously silently ignored) (`src/runner/tag-filter.ts`).
+- **`isDataTable` / `isDocString` type guards** for narrowing the trailing
+  `unknown` args step callbacks receive (`src/parser/models.ts`).
+- **`resetFeats()` + `clearRegistry`, `clearHooks`, `clearParameterTypeRegistry`
+  exports** for test-isolation between files (`src/state/reset.ts` + re-exports).
+
+### Changed
+- `matchStep(definitions, step)` now takes a `ParsedStep` instead of a bare
+  `string`. The callers in `feature-runner.ts` were updated. Downstream users
+  who imported `matchStep` directly (internal API; not previously documented)
+  need to pass a `ParsedStep`.
+
+### Docs
+- `docs/parameter-types.md` — defining custom Gherkin parameter types.
+- `docs/world.md` — typed worlds, factories, sharing setup across steps.
+- `docs/test-isolation.md` — `resetFeats` patterns and gotchas.
+- README — new "Filtering by tag" + "Better failure messages" sections,
+  expanded exports table, links to all the new docs.
+
 ## [1.0.2] — 2026-05-23
 
 ### Fixed
@@ -56,7 +98,8 @@ See [`SEMVER.md`](./SEMVER.md) for the project's stability policy.
 - Fixtures, RNG, CLI runner, config-assertions helpers.
 - Bun plugin for importing `.feature` files as JS modules.
 
-[Unreleased]: https://github.com/Questi0nM4rk/feats/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/Questi0nM4rk/feats/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Questi0nM4rk/feats/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/Questi0nM4rk/feats/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Questi0nM4rk/feats/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Questi0nM4rk/feats/releases/tag/v1.0.0

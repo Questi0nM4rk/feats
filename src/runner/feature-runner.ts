@@ -3,6 +3,7 @@ import type { Feature, ParsedStep } from "@/parser/models";
 import { matchStep } from "@/registry/expression-adapter";
 import type { StepDefinition } from "@/registry/step-definition";
 import { getRegistry } from "@/registry/step-registry";
+import { formatStepError } from "@/reporting/error-formatter";
 import type { HookDefinition } from "@/runner/hook-runner";
 import { getAfterHooks, getBeforeHooks } from "@/runner/hook-runner";
 import { matchesTagFilter } from "@/runner/tag-filter";
@@ -19,11 +20,18 @@ async function runSteps(
   definitions: readonly StepDefinition[],
 ): Promise<void> {
   for (const step of steps) {
-    const match = matchStep(definitions, step.text);
+    const match = matchStep(definitions, step);
     const extraArgs: unknown[] = [];
     if (step.docString !== undefined) extraArgs.push(step.docString);
     if (step.dataTable !== undefined) extraArgs.push(step.dataTable);
-    await match.definition.callback(world, ...match.args, ...extraArgs);
+    try {
+      await match.definition.callback(world, ...match.args, ...extraArgs);
+    } catch (err) {
+      // Wrap with Gherkin context for bun:test's default rendering. The
+      // original error remains reachable via `.cause`; Phase 2 reporters
+      // will use it to render their own way.
+      throw new Error(formatStepError(step, err), { cause: err });
+    }
   }
 }
 
@@ -35,7 +43,9 @@ export function runFeatures(features: readonly Feature[], opts?: RunOptions): vo
   const afterHooks = [...getAfterHooks()];
 
   const worldFactory: WorldFactory = opts?.worldFactory ?? (() => ({}));
-  const tagFilter = opts?.tagFilter ?? "";
+  // `opts.tagFilter` wins; otherwise fall back to the FEATS_TAGS env var so
+  // CI can filter without code changes (e.g. `FEATS_TAGS="@smoke" bun test`).
+  const tagFilter = opts?.tagFilter ?? process.env.FEATS_TAGS ?? "";
 
   for (const feature of features) {
     describe(feature.name, () => {

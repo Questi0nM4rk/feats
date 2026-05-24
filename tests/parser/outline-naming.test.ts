@@ -151,4 +151,55 @@ Feature: F
       "Process item [2]",
     ]);
   });
+
+  test("outline-level tags propagate to every expanded example", () => {
+    // Tags above a Scenario Outline must appear on every example row, so
+    // tag-filtered runs include/exclude all rows together. Without this,
+    // a `@smoke` outline would lose its tag on expansion and silently
+    // become unfilterable.
+    const feature = parseFeature(
+      `
+Feature: F
+  @smoke @critical
+  Scenario Outline: Process <type>
+    Given an item of type <type>
+
+    Examples:
+      | type |
+      | A    |
+      | B    |
+      | C    |
+`,
+      "outline-tags.feature",
+    );
+
+    expect(feature.scenarios).toHaveLength(3);
+    for (const s of feature.scenarios) {
+      const names = s.tags.map((t) => t.name);
+      expect(names).toContain("@smoke");
+      expect(names).toContain("@critical");
+    }
+  });
+
+  test("outline with no tags produces examples with no tags", () => {
+    // Negative-side regression guard for the rule above.
+    const feature = parseFeature(
+      `
+Feature: F
+  Scenario Outline: Untagged
+    Given <x>
+
+    Examples:
+      | x |
+      | 1 |
+      | 2 |
+`,
+      "outline-untagged.feature",
+    );
+
+    expect(feature.scenarios).toHaveLength(2);
+    for (const s of feature.scenarios) {
+      expect(s.tags).toHaveLength(0);
+    }
+  });
 });

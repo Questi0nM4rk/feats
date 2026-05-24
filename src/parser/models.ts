@@ -68,3 +68,33 @@ export function createDataTable(rows: readonly (readonly string[])[]): DataTable
     },
   };
 }
+
+/**
+ * Type guard for the trailing `unknown` arg that step callbacks receive when
+ * the step has a Gherkin data table. Lets consumers narrow without `as` casts.
+ *
+ * ```ts
+ * Given("a table of users", (world, arg) => {
+ *   if (!isDataTable(arg)) throw new Error("expected data table");
+ *   for (const user of arg.asObjects()) { ... }
+ * });
+ * ```
+ */
+export function isDataTable(x: unknown): x is DataTable {
+  if (typeof x !== "object" || x === null) return false;
+  const obj = x as { rows?: unknown; asObjects?: unknown; asLists?: unknown };
+  return (
+    Array.isArray(obj.rows) &&
+    obj.rows.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === "string")) &&
+    typeof obj.asObjects === "function" &&
+    typeof obj.asLists === "function"
+  );
+}
+
+/**
+ * Type guard for the trailing `unknown` arg that step callbacks receive when
+ * the step has a Gherkin doc string (a triple-quoted block).
+ */
+export function isDocString(x: unknown): x is string {
+  return typeof x === "string";
+}
