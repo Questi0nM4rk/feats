@@ -21,6 +21,12 @@ import type { World, WorldFactory } from "@/state/world";
 export interface RunOptions {
   worldFactory?: WorldFactory;
   tagFilter?: string;
+  /**
+   * Reporters to attach to this run. When omitted, the runner falls back
+   * to the `FEATS_REPORTERS` env var (e.g. `"pretty,junit:out.xml"`); when
+   * that's also empty, no reporter machinery runs and `bun:test` is the
+   * only output surface. See `docs/reporters.md`.
+   */
   reporters?: readonly FeatsReporter[];
 }
 
