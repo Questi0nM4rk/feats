@@ -21,10 +21,23 @@ export interface ParsedStep {
   readonly location: StepLocation;
 }
 
+/**
+ * Optional Rule metadata attached to a Scenario when the scenario is
+ * nested under a `Rule:` block. Lets reporters render the grouping
+ * without changing the flat `feature.scenarios` shape that Phase 1 and
+ * Phase 2a consumers rely on.
+ */
+export interface RuleInfo {
+  readonly name: string;
+  readonly tags: readonly Tag[];
+}
+
 export interface Scenario {
   readonly name: string;
   readonly tags: readonly Tag[];
   readonly steps: readonly ParsedStep[];
+  /** Present when this scenario was declared inside a `Rule:` block. */
+  readonly rule?: RuleInfo;
 }
 
 export interface Feature {

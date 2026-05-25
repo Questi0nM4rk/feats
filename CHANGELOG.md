@@ -8,6 +8,39 @@ See [`SEMVER.md`](./SEMVER.md) for the project's stability policy.
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-05-25
+
+Phase 2b of the roadmap. Three small additive features: `Rule:` keyword
+in the parser, `BeforeAll` / `AfterAll` lifecycle hooks, and pending
+step support. Non-breaking.
+
+### Added
+- **`Rule:` keyword in the Gherkin parser** (`src/parser/adapter.ts`).
+  Scenarios under a `Rule:` block appear flat in `feature.scenarios`
+  (preserves the Phase 1/2a shape) and carry a `rule?: RuleInfo`
+  field with the rule's name + tags. The runner composes
+  `feature.tags ◁ rule.tags ◁ scenario.tags` for tag filtering so a
+  `@critical` tag on a Rule applies to all its scenarios.
+- **`BeforeAll(cb)` / `AfterAll(cb)` lifecycle hooks** (`src/runner/hook-runner.ts`).
+  Fire once per `runFeatures()` call: `BeforeAll` before the first
+  scenario, `AfterAll` after the last. They run even when no reporters
+  are attached. Errors thrown by `AfterAll` hooks are collected (not
+  allowed to mask earlier failures), matching the `After` hook pattern.
+- **`pending(reason?: string)`** (`src/runner/pending.ts`). A step that
+  calls `pending()` records status `"pending"` and renders subsequent
+  steps as `"skipped"`. The scenario does NOT fail at the `bun:test`
+  level (suite stays green); reporters see `status: "pending"` and the
+  `RunSummary.pending` counter increments. Matches cucumber-js's
+  non-strict default. `PendingError` and `isPendingError` are also
+  exported for advanced uses.
+
+### Changed
+- `Scenario` model now has an optional `rule?: RuleInfo` field. Reading
+  code that ignores the field is unaffected.
+- `runFeatures` gating extended: lifecycle hooks fire even without
+  reporters (previously the `firstFeature.beforeAll` / `lastFeature.afterAll`
+  blocks were only registered when reporters were present).
+
 ## [1.2.0] — 2026-05-24
 
 Phase 2a of the roadmap. Adds a reporter contract + three built-in reporters
