@@ -77,3 +77,39 @@ jobs:
         # for dry-runs; `npm pack --dry-run` does the same validation
         # without authentication and prints the file list.
         run: npm pack --dry-run
+
+  e2e-hook-kit:
+    name: E2E (hook-kit)
+    runs-on: ubuntu-latest
+    # The e2e script builds feats, links it into a sibling hook-kit
+    # checkout, and runs hook-kit's feature tests against the linked
+    # build. This is the only CI gate that exercises the *published*
+    # surface against a real consumer; the unit tests cover internals.
+    steps:
+      - name: Checkout feats
+        uses: actions/checkout@v4
+        with:
+          path: feats
+
+      - name: Checkout hook-kit (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: questi0nm4rk/hook-kit
+          path: hook-kit
+          # If hook-kit is private, set a HOOK_KIT_TOKEN secret with
+          # `repo` scope and pass `token: ${{ secrets.HOOK_KIT_TOKEN }}`.
+          # GITHUB_TOKEN can't cross repos.
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Install hook-kit deps
+        working-directory: hook-kit
+        run: bun install --frozen-lockfile
+
+      - name: Run hook-kit E2E (also verifies FEATS_REPORTERS=pretty pipeline)
+        working-directory: feats
+        env:
+          HOOK_KIT_DIR: ${{ github.workspace }}/hook-kit
+        run: bash scripts/e2e-hook-kit.sh

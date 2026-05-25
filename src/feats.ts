@@ -23,11 +23,25 @@ export { createRng } from "./random/seeded-rng";
 // Step definitions
 export { clearParameterTypeRegistry, defineParameterType } from "./registry/parameter-types";
 export { clearRegistry, Given, Step, Then, When } from "./registry/step-registry";
+// Reporter contract + built-in reporters (Phase 2a)
+export type {
+  FeatsReporter,
+  FeatureResult,
+  RunSummary,
+  ScenarioResult,
+  StepResult,
+  StepStatus,
+} from "./reporting/reporter";
+export type { CucumberJsonReporterOpts } from "./reporting/reporters/cucumber-json";
+export { CucumberJsonReporter } from "./reporting/reporters/cucumber-json";
+export type { JUnitReporterOpts } from "./reporting/reporters/junit";
+export { JUnitReporter } from "./reporting/reporters/junit";
+export type { PrettyReporterOpts } from "./reporting/reporters/pretty";
+export { PrettyReporter } from "./reporting/reporters/pretty";
 export type { RunOptions } from "./runner/feature-runner";
 export { runFeatures } from "./runner/feature-runner";
 // Lifecycle hooks
 export { After, Before, clearHooks } from "./runner/hook-runner";
-
 // Test-isolation helper that clears registry + hooks + parameter types
 export { resetFeats } from "./state/reset";
 
