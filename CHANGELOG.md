@@ -8,6 +8,47 @@ See [`SEMVER.md`](./SEMVER.md) for the project's stability policy.
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-05-24
+
+Phase 2a of the roadmap. Adds a reporter contract + three built-in reporters
+(Pretty, JUnit, Cucumber JSON). Non-breaking — purely additive: when no
+reporters are configured, the runner emits no reporter events and `bun:test`
+remains the only output surface, exactly as in 1.1.0.
+
+### Added
+- **`FeatsReporter` contract** with eight optional callbacks (`onRunStart`,
+  `onFeatureStart`, `onScenarioStart`, `onStep`, `onScenarioEnd`,
+  `onFeatureEnd`, `onRunEnd`). All callbacks may be sync or async; the
+  runner awaits each in registration order. Reporters see the **raw** step
+  and error — not the `formatStepError`-wrapped `Error` `bun:test` uses
+  for its own rendering (`src/reporting/reporter.ts`).
+- **Three built-in reporters** (`src/reporting/reporters/`):
+  - `PrettyReporter` — human-readable console output with status icons,
+    durations, and a `Failures:` section. Honors `NO_COLOR` and TTY detection.
+  - `JUnitReporter` — Jenkins/Surefire-shaped XML written on `onRunEnd`.
+  - `CucumberJsonReporter` — cucumber-js-shaped JSON (the format
+    `cucumber-html-reporter` and similar consumers expect; durations in ns).
+- **`FEATS_REPORTERS` env var** — comma-separated reporter spec
+  (`pretty,junit:out.xml,cucumber-json:out.json`) so CI can attach reporters
+  without code changes. `opts.reporters` always wins when explicitly set
+  (`src/reporting/from-env.ts`).
+- **Path-collision fail-fast** in `JUnitReporter` and `CucumberJsonReporter`:
+  constructing two instances with the same `outFile` in one process throws.
+  Use the `{n}` placeholder for a 1-based instance counter when this is
+  intentional.
+- **Per-step status capture in the runner.** `feature-runner.ts` now
+  records per-step `passed` / `failed` / `skipped` / `undefined` status
+  and timing, aggregates them into `ScenarioResult` / `FeatureResult` /
+  `RunSummary`, and emits the event stream. Throw behavior to `bun:test`
+  is unchanged.
+- **Docs**: `docs/reporters.md` covers the contract, the three built-ins,
+  the env var, and how to write a custom reporter.
+
+### Changed
+- `runFeatures` accepts a new `reporters` option in `RunOptions`. When
+  omitted, the runner reads `FEATS_REPORTERS` from the environment; when
+  that's empty, no reporter machinery runs.
+
 ## [1.1.0] — 2026-05-23
 
 Phase 1 of the roadmap. Wires the existing dead code in `src/reporting/` into

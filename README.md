@@ -122,8 +122,33 @@ When("I add {string} to the cart", async (world, arg1) => {
 Ambiguous-step errors get the same location prefix so you can find the
 conflict instantly.
 
+## Reporters
+
+Attach reporters to render results to the console or emit CI artifacts
+(JUnit XML, Cucumber JSON). The quickest path is the env var:
+
+```bash
+FEATS_REPORTERS=pretty bun test
+FEATS_REPORTERS=junit:reports/junit.xml,cucumber-json:reports/cucumber.json bun test
+```
+
+Or pass instances explicitly:
+
+```ts
+import { runFeatures, PrettyReporter, JUnitReporter } from "@questi0nm4rk/feats";
+
+runFeatures(features, {
+  reporters: [new PrettyReporter(), new JUnitReporter({ outFile: "junit.xml" })],
+});
+```
+
+Custom reporters implement any subset of the eight `FeatsReporter`
+callbacks. See [`docs/reporters.md`](./docs/reporters.md) for the contract,
+event order, and built-in reference.
+
 ## More docs
 
+- [`docs/reporters.md`](./docs/reporters.md) — reporter contract + built-ins
 - [`docs/parameter-types.md`](./docs/parameter-types.md) — custom Gherkin params
 - [`docs/world.md`](./docs/world.md) — typed worlds, factories, sharing setup
 - [`docs/test-isolation.md`](./docs/test-isolation.md) — registry reset patterns
