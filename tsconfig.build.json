@@ -4,5 +4,5 @@
     "rootDir": "."
   },
   "include": ["src"],
-  "exclude": ["tests", "bench", "dist", "node_modules"]
+  "exclude": ["tests", "bench", "scripts", "dist", "node_modules"]
 }
