@@ -50,7 +50,9 @@
     "lint:fix": "biome check --write src/ tests/",
     "build": "bun build src/feats.ts src/plugin/bun-plugin.ts --outdir dist --target bun",
     "build:types": "tsc --project tsconfig.build.json --emitDeclarationOnly --outDir dist",
-    "bench": "bun run bench/run.ts"
+    "bench": "bun run bench/run.ts",
+    "changelog": "git cliff -o CHANGELOG.md",
+    "changelog:unreleased": "git cliff --unreleased --prepend CHANGELOG.md"
   },
   "dependencies": {
     "@cucumber/cucumber-expressions": "^19.0.0",
