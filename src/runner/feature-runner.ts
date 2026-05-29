@@ -14,7 +14,13 @@ import type {
   StepStatus,
 } from "@/reporting/reporter";
 import type { HookDefinition } from "@/runner/hook-runner";
-import { getAfterHooks, getBeforeHooks } from "@/runner/hook-runner";
+import {
+  getAfterAllHooks,
+  getAfterHooks,
+  getBeforeAllHooks,
+  getBeforeHooks,
+} from "@/runner/hook-runner";
+import { isPendingError } from "@/runner/pending";
 import { matchesTagFilter } from "@/runner/tag-filter";
 import type { World, WorldFactory } from "@/state/world";
 
@@ -102,6 +108,20 @@ async function executeStep(
       threw: false,
     };
   } catch (err) {
+    // pending() throws PendingError — that's a "step is intentionally
+    // not implemented" signal, not a failure. The scenario doesn't bubble
+    // to bun:test as a failure (handled in runScenario).
+    if (isPendingError(err)) {
+      return {
+        result: {
+          step,
+          status: "pending",
+          durationMs: performance.now() - start,
+          error: err,
+        },
+        threw: true,
+      };
+    }
     return {
       result: {
         step,
@@ -166,6 +186,8 @@ export function runFeatures(features: readonly Feature[], opts?: RunOptions): vo
   const definitions = [...getRegistry().getAll()];
   const beforeHooks = [...getBeforeHooks()];
   const afterHooks = [...getAfterHooks()];
+  const beforeAllHooks = [...getBeforeAllHooks()];
+  const afterAllHooks = [...getAfterAllHooks()];
 
   const worldFactory: WorldFactory = opts?.worldFactory ?? (() => ({}));
   // `opts.tagFilter` wins; otherwise fall back to the FEATS_TAGS env var so
@@ -187,8 +209,13 @@ export function runFeatures(features: readonly Feature[], opts?: RunOptions): vo
   // describe blocks register after the feature describes, so they run
   // after the last feature's afterAll — i.e. after onRunEnd).
   //
+  // BeforeAll / AfterAll lifecycle hooks ride the same gating — they fire
+  // once per runFeatures call, regardless of whether reporters are attached.
+  //
   // If features is empty, no events fire — there's nothing to report.
   const lastIdx = features.length - 1;
+  const lifecycleHooksPresent = beforeAllHooks.length > 0 || afterAllHooks.length > 0;
+  const needsRunGating = reportingEnabled || lifecycleHooksPresent;
 
   for (let i = 0; i < features.length; i++) {
     const feature = features[i];
@@ -199,40 +226,67 @@ export function runFeatures(features: readonly Feature[], opts?: RunOptions): vo
     describe(feature.name, () => {
       if (reportingEnabled) {
         featureResults.set(feature, []);
+      }
+      if (needsRunGating) {
         beforeAll(async () => {
           if (isFirst) {
             runStartTime = performance.now();
-            await emit(reporters, "onRunStart", features);
+            // BeforeAll hooks run BEFORE onRunStart so reporters see the
+            // "world as it is when the run begins", not pre-setup state.
+            // A thrown BeforeAll hook re-throws here — bun:test marks
+            // every scenario in this describe as failed and skips them.
+            for (const hook of beforeAllHooks) await hook.callback();
+            if (reportingEnabled) await emit(reporters, "onRunStart", features);
           }
-          await emit(reporters, "onFeatureStart", feature);
+          if (reportingEnabled) await emit(reporters, "onFeatureStart", feature);
         });
         afterAll(async () => {
-          const scenarios = featureResults.get(feature) ?? [];
-          const featureResult: FeatureResult = {
-            feature,
-            scenarios,
-            durationMs: scenarios.reduce((sum, s) => sum + s.durationMs, 0),
-          };
-          await emit(reporters, "onFeatureEnd", featureResult);
+          if (reportingEnabled) {
+            const scenarios = featureResults.get(feature) ?? [];
+            const featureResult: FeatureResult = {
+              feature,
+              scenarios,
+              durationMs: scenarios.reduce((sum, s) => sum + s.durationMs, 0),
+            };
+            await emit(reporters, "onFeatureEnd", featureResult);
+          }
 
           if (isLast) {
-            const summary: RunSummary = {
-              features: featureResults.size,
-              scenarios: runResults.length,
-              passed: runResults.filter((r) => r.status === "passed").length,
-              failed: runResults.filter((r) => r.status === "failed").length,
-              pending: runResults.filter((r) => r.status === "pending").length,
-              skipped: runResults.filter((r) => r.status === "skipped").length,
-              undefinedSteps: runResults.filter((r) => r.status === "undefined").length,
-              durationMs: performance.now() - runStartTime,
-            };
-            await emit(reporters, "onRunEnd", summary);
+            if (reportingEnabled) {
+              const summary: RunSummary = {
+                features: featureResults.size,
+                scenarios: runResults.length,
+                passed: runResults.filter((r) => r.status === "passed").length,
+                failed: runResults.filter((r) => r.status === "failed").length,
+                pending: runResults.filter((r) => r.status === "pending").length,
+                skipped: runResults.filter((r) => r.status === "skipped").length,
+                undefinedSteps: runResults.filter((r) => r.status === "undefined").length,
+                durationMs: performance.now() - runStartTime,
+              };
+              await emit(reporters, "onRunEnd", summary);
+            }
+            // AfterAll runs after onRunEnd — reporters see the run end
+            // first, then teardown happens. Errors are collected so a
+            // single bad teardown doesn't mask others.
+            const afterAllErrors: unknown[] = [];
+            for (const hook of afterAllHooks) {
+              try {
+                await hook.callback();
+              } catch (err) {
+                afterAllErrors.push(err);
+              }
+            }
+            if (afterAllErrors.length === 1) throw afterAllErrors[0];
+            if (afterAllErrors.length > 1) {
+              throw new AggregateError(afterAllErrors, "AfterAll hook(s) threw");
+            }
           }
         });
       }
 
       for (const scenario of feature.scenarios) {
-        const scenarioTags = [...feature.tags, ...scenario.tags];
+        // Tag inheritance: feature ◁ rule (if any) ◁ scenario.
+        const scenarioTags = [...feature.tags, ...(scenario.rule?.tags ?? []), ...scenario.tags];
 
         if (tagFilter !== "" && !matchesTagFilter(scenarioTags, tagFilter)) {
           test.skip(scenario.name, () => {});
@@ -355,13 +409,18 @@ async function runScenario(args: RunScenarioArgs): Promise<void> {
   }
 
   // Now re-throw for bun:test's default rendering — same shape as Phase 1.
-  if (stepError !== undefined && afterErrors.length > 0) {
+  // PendingError is intentional: the scenario passes at the bun:test level
+  // (so the suite stays green) but reporters see status="pending" above.
+  const stepErrorIsPending = stepError !== undefined && isPendingError(stepError);
+  const stepThrowable = stepErrorIsPending ? undefined : stepError;
+
+  if (stepThrowable !== undefined && afterErrors.length > 0) {
     throw new AggregateError(
-      [wrapStepError(firstFailedStep, stepError), ...afterErrors],
+      [wrapStepError(firstFailedStep, stepThrowable), ...afterErrors],
       "Scenario failed; After hook(s) also threw",
     );
   }
-  if (stepError !== undefined) throw wrapStepError(firstFailedStep, stepError);
+  if (stepThrowable !== undefined) throw wrapStepError(firstFailedStep, stepThrowable);
   if (afterErrors.length === 1) throw afterErrors[0];
   if (afterErrors.length > 1) throw new AggregateError(afterErrors, "After hook(s) threw");
 }
