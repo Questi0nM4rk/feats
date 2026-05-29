@@ -26,6 +26,9 @@ jobs:
       - name: Lint (biome)
         run: bun run lint
 
+      - name: Doc-count drift guard
+        run: bun scripts/check-doc-counts.ts
+
   semgrep:
     name: Semgrep
     runs-on: ubuntu-latest
