@@ -8,6 +8,39 @@ See [`SEMVER.md`](./SEMVER.md) for the project's stability policy.
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-05-29
+
+Phase 2c of the roadmap. Adds a standalone `feats` CLI binary and the
+`runCore` bun:test-free runner that powers it. Non-breaking — purely
+additive.
+
+### Added
+- **`feats` CLI binary** — standalone runner so feature files can be
+  executed outside `bun:test`. Supports `--require <glob>` to load step
+  modules, `--tags <expr>` for tag filtering, `--reporter <spec>`
+  (repeatable) for reporter selection, `--help`, `--version`. Defaults
+  to `tests/features/**/*.feature` + `**/*.steps.ts` + Pretty reporter
+  so the bare `feats` command works in most projects.
+  Exit codes: 0 (passed), 1 (failed / undefined / runtime error),
+  2 (CLI usage error).
+- **`runCore(features, opts)`** — bun:test-free runner exported from the
+  main entry. Returns `{ summary, exitCode }`, never throws on
+  scenario failure. Lets scripts and custom drivers reuse the same
+  engine as the CLI without spawning a subprocess
+  (`src/runner/core-runner.ts`).
+- **`runFeatsCli(argv, cwd?)`** — exported for tests / custom CLI wrappers.
+- **`docs/cli.md`** — usage, options, exit codes, programmatic API,
+  and how the CLI relates to the `bun:test` integration.
+
+### Changed
+- `runFeatures` (the bun:test wrapper) and the new `runCore` now share
+  a single `runScenarioPure` per-scenario engine (`src/runner/feature-runner.ts`).
+  Behavior is unchanged; the refactor keeps both paths in lockstep so
+  reporter events, hook ordering, and pending semantics can't diverge.
+- `package.json` declares `bin: { feats: "./bin/feats" }` and includes
+  `bin/` in `files` so `npm install -g @questi0nm4rk/feats` (or a local
+  `bun add`) makes the binary available.
+
 ## [1.3.0] — 2026-05-25
 
 Phase 2b of the roadmap. Three small additive features: `Rule:` keyword
