@@ -2,7 +2,15 @@ import { join } from "node:path";
 import { AstBuilder, compile, GherkinClassicTokenMatcher, Parser } from "@cucumber/gherkin";
 import type * as messages from "@cucumber/messages";
 import { IdGenerator } from "@cucumber/messages";
-import type { DataTable, Feature, ParsedStep, Scenario, StepLocation, Tag } from "@/parser/models";
+import type {
+  DataTable,
+  Feature,
+  ParsedStep,
+  RuleInfo,
+  Scenario,
+  StepLocation,
+  Tag,
+} from "@/parser/models";
 import { createDataTable } from "@/parser/models";
 
 type StepKeyword = "Given" | "When" | "Then" | "And" | "But";
@@ -44,19 +52,25 @@ function buildStepIndex(gherkinDoc: messages.GherkinDocument): Map<string, messa
   const feature = gherkinDoc.feature;
   if (feature === undefined) return index;
 
-  for (const child of feature.children) {
-    if (child.background !== undefined) {
-      for (const step of child.background.steps) {
-        index.set(step.id, step);
+  const indexChildren = (
+    children: readonly messages.FeatureChild[] | readonly messages.RuleChild[],
+  ): void => {
+    for (const child of children) {
+      if (child.background !== undefined) {
+        for (const step of child.background.steps) index.set(step.id, step);
+      }
+      if (child.scenario !== undefined) {
+        for (const step of child.scenario.steps) index.set(step.id, step);
+      }
+      // Rules contain their own children (backgrounds + scenarios) which
+      // must also be indexed so compiled pickle steps can resolve their AST.
+      if ("rule" in child && child.rule !== undefined) {
+        indexChildren(child.rule.children);
       }
     }
-    if (child.scenario !== undefined) {
-      for (const step of child.scenario.steps) {
-        index.set(step.id, step);
-      }
-    }
-  }
+  };
 
+  indexChildren(feature.children);
   return index;
 }
 
@@ -69,11 +83,17 @@ function buildBackgroundStepIds(gherkinDoc: messages.GherkinDocument): Set<strin
   const ids = new Set<string>();
   const feature = gherkinDoc.feature;
   if (feature === undefined) return ids;
-  for (const child of feature.children) {
-    if (child.background !== undefined) {
-      for (const step of child.background.steps) ids.add(step.id);
+  const collect = (
+    children: readonly messages.FeatureChild[] | readonly messages.RuleChild[],
+  ): void => {
+    for (const child of children) {
+      if (child.background !== undefined) {
+        for (const step of child.background.steps) ids.add(step.id);
+      }
+      if ("rule" in child && child.rule !== undefined) collect(child.rule.children);
     }
-  }
+  };
+  collect(feature.children);
   return ids;
 }
 
@@ -203,6 +223,22 @@ export function parseFeature(source: string, uri: string): Feature {
   const compiled = compile(gherkinDoc, uri, newId);
   const compiledByScenarioId = groupCompiledByScenarioId(compiled);
 
+  const processScenarioChild = (scenario: messages.Scenario, rule: RuleInfo | undefined): void => {
+    if (isOutline(scenario)) {
+      const outlineScenarios = compiledByScenarioId.get(scenario.id) ?? [];
+      const mapped = outlineScenarios.map((item) => {
+        const base = compiledScenarioToScenario(item, stepIndex, backgroundStepIds);
+        return rule !== undefined ? { ...base, rule } : base;
+      });
+      scenarios.push(...disambiguateOutlineNames(mapped));
+    } else {
+      const steps = scenario.steps.map((s) => mapStep(s, uri));
+      const scenarioTags = scenario.tags.map(mapTag);
+      const built: Scenario = { name: scenario.name, tags: scenarioTags, steps };
+      scenarios.push(rule !== undefined ? { ...built, rule } : built);
+    }
+  };
+
   for (const child of feature.children) {
     if (child.background !== undefined) {
       background = {
@@ -211,17 +247,23 @@ export function parseFeature(source: string, uri: string): Feature {
     }
 
     if (child.scenario !== undefined) {
-      const scenario = child.scenario;
-      if (isOutline(scenario)) {
-        const outlineScenarios = compiledByScenarioId.get(scenario.id) ?? [];
-        const mapped = outlineScenarios.map((item) =>
-          compiledScenarioToScenario(item, stepIndex, backgroundStepIds),
-        );
-        scenarios.push(...disambiguateOutlineNames(mapped));
-      } else {
-        const steps = scenario.steps.map((s) => mapStep(s, uri));
-        const scenarioTags = scenario.tags.map(mapTag);
-        scenarios.push({ name: scenario.name, tags: scenarioTags, steps });
+      processScenarioChild(child.scenario, undefined);
+    }
+
+    // Rules group scenarios under a named bucket and may carry their own
+    // background + tags. We surface scenarios flat in `feature.scenarios`
+    // (backwards-compat) with `scenario.rule` attached as metadata. A
+    // rule's own background is NOT yet merged — the runner only honors
+    // feature-level background. Phase 3 can deepen this.
+    if (child.rule !== undefined) {
+      const ruleInfo: RuleInfo = {
+        name: child.rule.name,
+        tags: child.rule.tags.map(mapTag),
+      };
+      for (const ruleChild of child.rule.children) {
+        if (ruleChild.scenario !== undefined) {
+          processScenarioChild(ruleChild.scenario, ruleInfo);
+        }
       }
     }
   }

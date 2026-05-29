@@ -12,7 +12,7 @@ export type { FixtureProject } from "./fixtures/fixture-project";
 
 // Feature loading + running
 export { loadFeatures, parseFeature } from "./parser/adapter";
-export type { DataTable, Feature, ParsedStep, Scenario, Tag } from "./parser/models";
+export type { DataTable, Feature, ParsedStep, RuleInfo, Scenario, Tag } from "./parser/models";
 // Type guards for the trailing args step callbacks receive
 export { isDataTable, isDocString } from "./parser/models";
 
@@ -41,7 +41,9 @@ export { PrettyReporter } from "./reporting/reporters/pretty";
 export type { RunOptions } from "./runner/feature-runner";
 export { runFeatures } from "./runner/feature-runner";
 // Lifecycle hooks
-export { After, Before, clearHooks } from "./runner/hook-runner";
+export { After, AfterAll, Before, BeforeAll, clearHooks } from "./runner/hook-runner";
+// Pending step (Phase 2b)
+export { PendingError, pending } from "./runner/pending";
 // Test-isolation helper that clears registry + hooks + parameter types
 export { resetFeats } from "./state/reset";
 

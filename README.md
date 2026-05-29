@@ -146,6 +146,51 @@ Custom reporters implement any subset of the eight `FeatsReporter`
 callbacks. See [`docs/reporters.md`](./docs/reporters.md) for the contract,
 event order, and built-in reference.
 
+## Lifecycle hooks
+
+`Before` / `After` run per scenario (Phase 1). `BeforeAll` / `AfterAll`
+(Phase 2b) run once per `runFeatures()` call:
+
+```ts
+import { BeforeAll, AfterAll } from "@questi0nm4rk/feats";
+
+BeforeAll(async () => { await db.connect(); });
+AfterAll(async () => { await db.disconnect(); });
+```
+
+## Pending steps
+
+A step can declare itself not-yet-implemented without failing the suite:
+
+```ts
+import { pending } from "@questi0nm4rk/feats";
+
+Given("the checkout flow is wired up", () => {
+  pending("not done yet");
+});
+```
+
+Subsequent steps in that scenario render as skipped; reporters see
+`status: "pending"` and `RunSummary.pending` increments.
+
+## Rule:
+
+The parser accepts the Gherkin 6 `Rule:` keyword. Scenarios under a Rule
+appear flat in `feature.scenarios` (so existing code keeps working) with
+a `rule?: { name, tags }` field attached for reporter / filter use. Rule
+tags are inherited by their scenarios for tag filtering — `@critical`
+on a Rule applies to every scenario inside.
+
+```gherkin
+Feature: Checkout
+
+  @critical
+  Rule: Empty carts cost nothing
+    Scenario: Empty cart total is zero
+      Given the cart is empty
+      Then the total is 0
+```
+
 ## More docs
 
 - [`docs/reporters.md`](./docs/reporters.md) — reporter contract + built-ins
