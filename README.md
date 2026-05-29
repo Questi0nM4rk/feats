@@ -1,6 +1,16 @@
-# @questi0nm4rk/feats
+<div align="center">
 
-BDD/Gherkin test framework for Bun — feature testing with typed step definitions.
+# `@questi0nm4rk/feats`
+
+**BDD/Gherkin test framework for Bun** — feature testing with typed step definitions.
+
+[![npm](https://img.shields.io/npm/v/@questi0nm4rk/feats?color=cb3837&label=npm)](https://www.npmjs.com/package/@questi0nm4rk/feats)
+[![types](https://img.shields.io/npm/types/@questi0nm4rk/feats?color=3178c6)](https://www.npmjs.com/package/@questi0nm4rk/feats)
+[![license](https://img.shields.io/npm/l/@questi0nm4rk/feats?color=blue)](./LICENSE)
+[![CI](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml/badge.svg)](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml)
+[![release](https://img.shields.io/github/v/release/Questi0nM4rk/feats?display_name=tag)](https://github.com/Questi0nM4rk/feats/releases)
+
+</div>
 
 ## Install
 
@@ -25,6 +35,7 @@ Feature: Shopping cart checkout
 **`tests/features/checkout.steps.ts`**
 
 ```typescript
+import { expect } from "bun:test";
 import { Given, When, Then } from "@questi0nm4rk/feats";
 
 interface CartWorld {
