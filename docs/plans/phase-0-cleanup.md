@@ -104,6 +104,7 @@ Easier alternative: always append a 1-based index `"Add item [1]"` if names
 collide within the group.
 
 **Approach:**
+
 ```ts
 // adapter.ts compiledScenarioToScenario or its caller
 function disambiguateNames(scenarios: Scenario[]): Scenario[] {
@@ -148,6 +149,7 @@ options. The `yaml` library is vulnerable to "billion laughs" via unbounded
 anchor expansion if asserting on user-supplied YAML.
 
 **Fix:**
+
 ```ts
 yaml.parse(text, { maxAliasCount: 100 })
 ```

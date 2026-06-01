@@ -311,9 +311,11 @@ When("I add {string} {int} times for ${float}", async (world, name, count, price
 Moved here from Phase 0 (was 0.5) because new exports require a minor bump.
 
 ai-guardrails' `tests/steps/suppress.steps.ts` does a runtime guard:
+
 ```ts
 if (typeof (table as DataTable).asLists !== "function") { /* ... */ }
 ```
+
 This signals the type isn't trusted at the boundary. Step callbacks receive
 `...args: unknown[]`, so the consumer has to cast. Type guards close the gap
 without changing the callback signature (which would be breaking).
