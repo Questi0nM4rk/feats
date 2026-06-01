@@ -152,7 +152,8 @@ Document this prominently in `docs/reporters.md`.
 `src/reporting/reporters/pretty.ts`
 
 Output format (sample, colors omitted):
-```
+
+```text
 Feature: Shopping cart checkout
 
   Scenario: Add item and checkout
@@ -165,7 +166,8 @@ Feature: Shopping cart checkout
 ```
 
 Failure example:
-```
+
+```text
 Feature: Shopping cart checkout
 
   Scenario: Add expired coupon
@@ -225,6 +227,7 @@ steps. Match the shape that `cucumber-html-reporter` expects.
 A `Rule:` block becomes invisible — its scenarios are silently dropped.
 
 **Parser change:**
+
 ```ts
 // adapter.ts — extend the loop
 for (const child of feature.children) {
@@ -342,7 +345,8 @@ glob just to call `loadFeatures(...)` + `runFeatures(...)`. A CLI removes that
 boilerplate and adds reporter selection.
 
 **Spec:**
-```
+
+```text
 feats <glob> [<glob>...]
   --tags <expr>          Tag filter expression (overrides FEATS_TAGS)
   --reporter <spec>      Reporter spec, e.g. pretty, junit:out.xml, cucumber-json:out.json
@@ -415,9 +419,11 @@ For each of `pretty`, `junit`, `cucumber-json`:
 
 1. In hook-kit, delete `tests/features/run-pipeline.test.ts`
 2. Run via CLI:
-   ```
+
+   ```bash
    bunx feats tests/features/*.feature --reporter pretty --reporter junit:out/junit.xml
    ```
+
 3. Confirm:
    - Pretty output shows all scenarios with Given/When/Then context
    - `out/junit.xml` is created and valid
