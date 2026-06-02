@@ -1,0 +1,8 @@
+#!/usr/bin/env bun
+// Entry shim for the `feats` CLI. Imports from the main bundle so user
+// step modules (which import `@questi0nm4rk/feats`) share the same step
+// registry as the runner. Separate bundles would each carry their own
+// registry and the runner would see "undefined step" for everything.
+import { runFeatsCli } from "../dist/feats.js";
+
+process.exitCode = await runFeatsCli(process.argv.slice(2));

@@ -202,8 +202,23 @@ Feature: Checkout
       Then the total is 0
 ```
 
+## The `feats` CLI
+
+A standalone binary for running features outside `bun:test`:
+
+```bash
+feats                                            # default globs, Pretty reporter
+feats tests/features/cart.feature --tags @smoke
+feats --reporter junit:reports/junit.xml
+```
+
+`runCore(features, opts)` is exported for programmatic use; it returns
+`{ summary, exitCode }` and never throws. See
+[`docs/cli.md`](./docs/cli.md).
+
 ## More docs
 
+- [`docs/cli.md`](./docs/cli.md) — the `feats` CLI + programmatic `runCore`
 - [`docs/reporters.md`](./docs/reporters.md) — reporter contract + built-ins
 - [`docs/parameter-types.md`](./docs/parameter-types.md) — custom Gherkin params
 - [`docs/world.md`](./docs/world.md) — typed worlds, factories, sharing setup
