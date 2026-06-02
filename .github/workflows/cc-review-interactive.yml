@@ -1,0 +1,138 @@
+# ============================================================================
+#  cc-review interactive — the @cc-review ping. ALWAYS available, regardless of
+#  the `trigger:` setting in .cc-review.yaml (even when trigger: disabled).
+#
+#  Comment on a PR:
+#     @cc-review                                  full review
+#     @cc-review re-check the auth path           focused review
+#     @cc-review just verify my fixes and approve recheck + conditional approve
+#     @cc-review what does this change do?         answer-only, no review
+#
+#  The message after @cc-review is UNTRUSTED: it is written to a file and read
+#  by the workflow as data (the triage phase maps it to a bounded run-plan; it
+#  can steer within the safety envelope but cannot force an approval).
+# ============================================================================
+name: cc-review interactive
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  group: cc-review-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  respond:
+    runs-on: ubuntu-latest
+    if: |
+      contains(github.event.comment.body, '@cc-review') &&
+      (github.event_name == 'pull_request_review_comment' ||
+       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null))
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout consumer repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REVIEWER_APP_ID }}
+          private-key: ${{ secrets.REVIEWER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Extract PR number + untrusted message (to a file)
+        id: extract
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_PR: ${{ github.event.issue.number }}
+          REVIEW_PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request_review_comment" ]; then PR="$REVIEW_PR"; else PR="$ISSUE_PR"; fi
+          [ -z "$PR" ] && { echo "::error::no PR number"; exit 1; }
+          echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
+          # Strip everything up to and including @cc-review; keep the rest as the message.
+          # Written via printf to a file — never interpolated into the claude prompt.
+          MSG="${COMMENT_BODY#*@cc-review}"
+          printf '%s' "${MSG# }" > /tmp/cc-user-msg.txt
+          echo "Message bytes: $(wc -c < /tmp/cc-user-msg.txt)"
+
+      - name: Post status comment
+        id: status
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.extract.outputs.pr_number }}
+        run: |
+          ID=$(gh api "repos/${REPO}/issues/${PR}/comments" --method POST \
+            -f body="> **cc-review** is on it... :hourglass_flowing_sand:" --jq '.id')
+          echo "comment_id=$ID" >> "$GITHUB_OUTPUT"
+
+      - name: Clone bot + pre-fetch + install
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.extract.outputs.pr_number }}
+        run: |
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          git clone --depth 1 -b rewrite https://github.com/Questi0nM4rk/cc-review.git /tmp/cc-review-bot
+          echo "CC_REVIEW_BOT_DIR=/tmp/cc-review-bot" >> "$GITHUB_ENV"
+          mkdir -p /tmp/run /tmp/memory/learnings
+          gh pr view "$PR" --json title,body,author,baseRefName,headRefName,files > /tmp/pr-meta.json
+          if ! gh pr diff "$PR" > /tmp/pr-diff.txt 2>/dev/null; then
+            BASE=$(jq -r '.baseRefName' /tmp/pr-meta.json); HEAD=$(jq -r '.headRefName' /tmp/pr-meta.json)
+            git fetch origin "$HEAD" 2>/dev/null || true
+            git diff "origin/$BASE...origin/$HEAD" > /tmp/pr-diff.txt 2>/dev/null || echo "" > /tmp/pr-diff.txt
+          fi
+          if git -C /tmp/cc-review-bot fetch origin claude-reviewer/memory:claude-reviewer/memory 2>/dev/null; then
+            git -C /tmp/cc-review-bot archive claude-reviewer/memory "${REPO}/" 2>/dev/null | tar -x -C /tmp/memory --strip-components=2 2>/dev/null || true
+          fi
+          [ -f /tmp/memory/MEMORY.md ] || printf '# Project Memory: %s\n\n(empty)\n' "$REPO" > /tmp/memory/MEMORY.md
+          npm install -g tsx
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run strict-review workflow (with the @cc-review intent)
+        id: review
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.extract.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+          CC_POST: "1"
+        run: |
+          # No untrusted text in the prompt — the workflow reads /tmp/cc-user-msg.txt.
+          # Inputs flow via env + /tmp (args don't pass through `claude -p`).
+          PROMPT="Use the Workflow tool with scriptPath '${CC_REVIEW_BOT_DIR}/.claude/workflows/strict-review.mjs'. Run it to completion and report the return value as JSON. The workflow reads the PR number, repo, post-flag, config, and the maintainer @cc-review message (in /tmp/cc-user-msg.txt) from the environment and /tmp."
+          claude -p "$PROMPT" \
+            --model claude-sonnet-4-6 \
+            --output-format stream-json --verbose \
+            --allowedTools "Workflow,Bash(gh:*),Bash(glab:*),Bash(git:*),Bash(tsx:*),Bash(npx:*),Bash(node:*),Bash(cat:*),Read,Write,Edit,Grep,Glob,WebSearch,WebFetch" \
+            --permission-mode bypassPermissions \
+            | tee /tmp/run/session.jsonl
+
+      - name: Update status comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ steps.status.outputs.comment_id }}
+          OUTCOME: ${{ steps.review.outcome }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          [ -z "$COMMENT_ID" ] && exit 0
+          if [ "$OUTCOME" = "success" ]; then BODY="> **cc-review** finished. See the review / comment above."
+          else BODY="> **cc-review** hit an error. [Logs](https://github.com/${REPO}/actions/runs/${RUN_ID})"; fi
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" --method PATCH -f body="$BODY" || true
