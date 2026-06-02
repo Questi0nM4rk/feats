@@ -13,7 +13,7 @@ an audit checklist.
 | 1 | Wire existing dead code + small DX wins | `1.1.0` (minor) | [phase-1-wiring.md](./phase-1-wiring.md) |
 | 2a | Reporter contract + Pretty / JUnit / Cucumber JSON | `1.2.0` (minor) ✅ | [phase-2-reporting.md](./phase-2-reporting.md) |
 | 2b | `Rule:`, `BeforeAll` / `AfterAll`, pending step | `1.3.0` (minor) ✅ | [phase-2-reporting.md](./phase-2-reporting.md) |
-| 2c | CLI binary + `core-runner` extraction | `1.4.0` (minor) | [phase-2-reporting.md](./phase-2-reporting.md) |
+| 2c | CLI binary + `core-runner` extraction | `1.4.0` (minor) ✅ | [phase-2-reporting.md](./phase-2-reporting.md) |
 
 All three phases are **non-breaking**. Removal of under-adopted exports (`assertConfig`,
 `assertOutput`, `runCli`, the Bun plugin) is deferred to a hypothetical `2.0.0`.

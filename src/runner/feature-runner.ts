@@ -327,7 +327,29 @@ interface RunScenarioArgs {
   readonly featureResults: Map<Feature, ScenarioResult[]>;
 }
 
-async function runScenario(args: RunScenarioArgs): Promise<void> {
+interface ScenarioOutcome {
+  readonly result: ScenarioResult;
+  readonly stepError: unknown;
+  readonly firstFailedStep: ParsedStep | undefined;
+  readonly afterErrors: readonly unknown[];
+}
+
+/**
+ * Execute one scenario (background + steps + hooks), emit reporter events,
+ * and return a structured outcome. Does NOT throw on step / hook failures —
+ * the caller decides whether to rethrow (bun:test wrapper does) or just
+ * record the result (CLI / core-runner does).
+ */
+export async function runScenarioPure(args: {
+  readonly scenario: Scenario;
+  readonly feature: Feature;
+  readonly scenarioTags: readonly { name: string }[];
+  readonly definitions: readonly StepDefinition[];
+  readonly beforeHooks: readonly HookDefinition[];
+  readonly afterHooks: readonly HookDefinition[];
+  readonly worldFactory: WorldFactory;
+  readonly reporters: readonly FeatsReporter[];
+}): Promise<ScenarioOutcome> {
   const {
     scenario,
     feature,
@@ -337,15 +359,10 @@ async function runScenario(args: RunScenarioArgs): Promise<void> {
     afterHooks,
     worldFactory,
     reporters,
-    reportingEnabled,
-    runResults,
-    featureResults,
   } = args;
 
   const scenarioStart = performance.now();
-  if (reportingEnabled) {
-    await emit(reporters, "onScenarioStart", scenario, feature);
-  }
+  await emit(reporters, "onScenarioStart", scenario, feature);
 
   const world = worldFactory();
   let stepError: unknown;
@@ -394,23 +411,41 @@ async function runScenario(args: RunScenarioArgs): Promise<void> {
 
   const aggregateError = buildScenarioError(stepError, afterErrors);
 
-  if (reportingEnabled) {
-    const scenarioResult: ScenarioResult = {
-      scenario,
-      feature,
-      status,
-      steps: stepResults,
-      durationMs: performance.now() - scenarioStart,
-      ...(aggregateError !== undefined ? { error: aggregateError } : {}),
-    };
-    runResults.push(scenarioResult);
-    featureResults.get(feature)?.push(scenarioResult);
-    await emit(reporters, "onScenarioEnd", scenarioResult);
+  const result: ScenarioResult = {
+    scenario,
+    feature,
+    status,
+    steps: stepResults,
+    durationMs: performance.now() - scenarioStart,
+    ...(aggregateError !== undefined ? { error: aggregateError } : {}),
+  };
+
+  await emit(reporters, "onScenarioEnd", result);
+
+  return { result, stepError, firstFailedStep, afterErrors };
+}
+
+async function runScenario(args: RunScenarioArgs): Promise<void> {
+  const outcome = await runScenarioPure({
+    scenario: args.scenario,
+    feature: args.feature,
+    scenarioTags: args.scenarioTags,
+    definitions: args.definitions,
+    beforeHooks: args.beforeHooks,
+    afterHooks: args.afterHooks,
+    worldFactory: args.worldFactory,
+    reporters: args.reporters,
+  });
+
+  if (args.reportingEnabled) {
+    args.runResults.push(outcome.result);
+    args.featureResults.get(args.feature)?.push(outcome.result);
   }
 
   // Now re-throw for bun:test's default rendering — same shape as Phase 1.
   // PendingError is intentional: the scenario passes at the bun:test level
   // (so the suite stays green) but reporters see status="pending" above.
+  const { stepError, firstFailedStep, afterErrors } = outcome;
   const stepErrorIsPending = stepError !== undefined && isPendingError(stepError);
   const stepThrowable = stepErrorIsPending ? undefined : stepError;
 
