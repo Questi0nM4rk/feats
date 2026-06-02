@@ -1,0 +1,196 @@
+# ============================================================================
+#  cc-review — automated strict PR review (powered by Claude Code)
+# ----------------------------------------------------------------------------
+#  This file lives in YOUR repo's .github/workflows/. It clones the cc-review
+#  bot at runtime and runs its self-contained review workflow on your PRs.
+#
+#  WHEN does it auto-review?  Controlled by `trigger:` in .cc-review.yaml:
+#     every_push : on PR open AND every push to the PR branch
+#     pr_open    : on PR open / reopen only            (default)
+#     disabled   : never auto-reviews
+#  Regardless of `trigger`, the @cc-review comment ping ALWAYS works
+#  (see cc-review-interactive.yml). The `cc-review` label and a manual
+#  workflow_dispatch are always-on overrides; the `no-review` label suppresses.
+#
+#  Requires repo secrets: CLAUDE_CODE_OAUTH_TOKEN, REVIEWER_APP_ID,
+#  REVIEWER_APP_PRIVATE_KEY. See the cc-review SPEC.md for GitHub App setup.
+# ============================================================================
+name: cc-review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review"
+        required: true
+
+concurrency:
+  group: cc-review-${{ github.repository }}-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: >-
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      !contains(github.event.pull_request.user.login, '[bot]')
+    timeout-minutes: 30
+    permissions:
+      contents: write        # push memory + ephemeral log branches
+      pull-requests: write   # post reviews, resolve threads
+      issues: write          # post the walkthrough + status comments
+
+    steps:
+      - name: Checkout consumer repo (PR head)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REVIEWER_APP_ID }}
+          private-key: ${{ secrets.REVIEWER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Resolve PR number + trigger gate
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          DISPATCH_PR: ${{ github.event.inputs.pr_number }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+        run: |
+          PR="${DISPATCH_PR:-$EVENT_PR}"
+          echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
+
+          TRIGGER=$(grep -oP '^trigger:\s*\K\S+' .cc-review.yaml 2>/dev/null | tr -d ' "'"'" || echo "pr_open")
+          [ -z "$TRIGGER" ] && TRIGGER="pr_open"
+          echo "Configured trigger: $TRIGGER (event=$EVENT action=$ACTION)"
+
+          RUN=false
+          case "$EVENT" in
+            workflow_dispatch) RUN=true ;;
+            pull_request)
+              if [ "$ACTION" = "labeled" ] && [ "$LABEL" = "cc-review" ]; then RUN=true
+              elif [ "$ACTION" = "opened" ] || [ "$ACTION" = "reopened" ]; then
+                [ "$TRIGGER" = "pr_open" ] || [ "$TRIGGER" = "every_push" ] && RUN=true
+              elif [ "$ACTION" = "synchronize" ]; then
+                [ "$TRIGGER" = "every_push" ] && RUN=true
+              fi ;;
+          esac
+          echo "should_run=$RUN" >> "$GITHUB_OUTPUT"
+          echo "Decision: should_run=$RUN"
+
+      - name: Clone cc-review bot (self-contained, no submodule)
+        if: steps.gate.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          git clone --depth 1 -b rewrite https://github.com/Questi0nM4rk/cc-review.git /tmp/cc-review-bot
+          echo "CC_REVIEW_BOT_DIR=/tmp/cc-review-bot" >> "$GITHUB_ENV"
+          mkdir -p /tmp/run /tmp/memory
+
+      - name: Pre-fetch diff + project memory slice
+        if: steps.gate.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.gate.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Diff (with a local-git fallback for diffs too large for the API).
+          gh pr view "$PR_NUMBER" --json title,body,author,baseRefName,headRefName,files > /tmp/pr-meta.json
+          if ! gh pr diff "$PR_NUMBER" > /tmp/pr-diff.txt 2>/dev/null; then
+            BASE=$(jq -r '.baseRefName' /tmp/pr-meta.json); HEAD=$(jq -r '.headRefName' /tmp/pr-meta.json)
+            git fetch origin "$HEAD" 2>/dev/null || true
+            git diff "origin/$BASE...origin/$HEAD" > /tmp/pr-diff.txt 2>/dev/null || echo "" > /tmp/pr-diff.txt
+          fi
+          # Memory slice: extract this repo's palace from the global memory branch.
+          if git -C /tmp/cc-review-bot fetch origin claude-reviewer/memory:claude-reviewer/memory 2>/dev/null; then
+            git -C /tmp/cc-review-bot archive claude-reviewer/memory "${REPO}/" 2>/dev/null \
+              | tar -x -C /tmp/memory --strip-components=2 2>/dev/null || true
+          fi
+          [ -f /tmp/memory/MEMORY.md ] || printf '# Project Memory: %s\n\n(empty)\n' "$REPO" > /tmp/memory/MEMORY.md
+          mkdir -p /tmp/memory/learnings
+
+      - name: Install Claude Code + tsx
+        if: steps.gate.outputs.should_run == 'true'
+        run: |
+          npm install -g tsx
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run strict-review workflow
+        id: review
+        if: steps.gate.outputs.should_run == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.gate.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+          CC_POST: "1"
+        run: |
+          # Inputs flow via env + /tmp (args don't pass through `claude -p`): the
+          # workflow's Fetch phase reads PR_NUMBER, REPO, CC_POST, /tmp/pr-diff.txt, .cc-review.yaml.
+          PROMPT="Use the Workflow tool with scriptPath '${CC_REVIEW_BOT_DIR}/.claude/workflows/strict-review.mjs'. Run it to completion and report its return value verbatim as JSON. The workflow reads the PR number, repo, post-flag, and project config from the environment and /tmp."
+          claude -p "$PROMPT" \
+            --model claude-sonnet-4-6 \
+            --output-format stream-json --verbose \
+            --allowedTools "Workflow,Bash(gh:*),Bash(glab:*),Bash(git:*),Bash(tsx:*),Bash(npx:*),Bash(node:*),Bash(cat:*),Read,Write,Edit,Grep,Glob,WebSearch,WebFetch" \
+            --permission-mode bypassPermissions \
+            | tee /tmp/run/session.jsonl
+          jq -r 'select(.type=="result") | .result' /tmp/run/session.jsonl > /tmp/run/result.txt 2>/dev/null || true
+          cp /tmp/pr-diff.txt /tmp/run/diff.txt 2>/dev/null || true
+
+      - name: Push run output to the ephemeral log branch
+        if: always() && steps.gate.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref || format('pr-{0}', steps.gate.outputs.pr_number) }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          # Ephemeral per-PR debug branch: <source-branch>-cc-review-output.
+          # cc-review-cleanup.yml deletes it when the PR leaves the open state.
+          LOG_BRANCH="${HEAD_REF}-cc-review-output"
+          WORK=$(mktemp -d); cd "$WORK"
+          git init -q; git config user.name "cc-review[bot]"; git config user.email "cc-review[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git checkout -q --orphan out
+          mkdir -p run
+          cp /tmp/run/* run/ 2>/dev/null || true
+          printf '# cc-review run log — %s\n\nrun: https://github.com/%s/actions/runs/%s\n' "$LOG_BRANCH" "${{ github.repository }}" "$RUN_ID" > README.md
+          git add -A
+          git commit -q -m "cc-review run for ${LOG_BRANCH} ($(date -u +%FT%TZ))" || true
+          git push -f origin "out:refs/heads/${LOG_BRANCH}" || echo "log branch push failed (non-fatal)"
+
+      - name: Push project memory
+        if: always() && steps.gate.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.gate.outputs.pr_number }}
+        run: |
+          BOT=/tmp/cc-review-bot; SLICE="$REPO"
+          cd "$BOT"; git config user.name "cc-review[bot]"; git config user.email "cc-review[bot]@users.noreply.github.com"
+          push_mem() {
+            git fetch origin claude-reviewer/memory 2>/dev/null || true
+            if git rev-parse --verify origin/claude-reviewer/memory >/dev/null 2>&1; then
+              git checkout -B claude-reviewer/memory origin/claude-reviewer/memory
+            else
+              git checkout --orphan claude-reviewer/memory; git rm -rf . 2>/dev/null || true
+              printf '# cc-review memory\n\nPer-project palace. Each top dir is one consumer repo.\n' > README.md
+              git add README.md; git commit -q -m "init memory"
+            fi
+            mkdir -p "$SLICE"; rm -rf "${SLICE:?}/MEMORY.md" "${SLICE:?}/learnings" 2>/dev/null || true
+            cp -r /tmp/memory/. "$SLICE/" 2>/dev/null || true
+            git add "$SLICE/"
+            git diff --cached --quiet && { echo "no memory changes"; return 0; }
+            git commit -q -m "memory: ${REPO} PR #${PR_NUMBER}"; git push origin claude-reviewer/memory
+          }
+          for n in 1 2 3; do push_mem && break; echo "memory push retry $n"; sleep $((n*5)); done
