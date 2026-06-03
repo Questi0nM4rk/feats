@@ -166,9 +166,11 @@ jobs:
           # gitleaks gate — this step git-inits a fresh repo in /tmp, so the consumer's
           # hooks/pre-commit gitleaks never runs. Scan the run output before publishing it.
           if curl -sSLf -o /tmp/gl.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz 2>/dev/null && tar -xzf /tmp/gl.tgz -C /tmp gitleaks 2>/dev/null; then
-            if ! /tmp/gitleaks detect --no-git --source /tmp/run --redact -q; then
+            # detect exits non-zero when leaks are found; --source/--no-git scan plain files.
+            if ! /tmp/gitleaks detect --source /tmp/run --no-git --redact --no-banner; then
               echo "::warning::gitleaks flagged secrets in run output — skipping log-branch push"; exit 0
             fi
+            echo "gitleaks: clean"
           else
             echo "::warning::gitleaks unavailable — dropping session.jsonl as a precaution"; rm -f /tmp/run/session.jsonl
           fi
