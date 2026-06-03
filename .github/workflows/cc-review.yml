@@ -193,11 +193,15 @@ jobs:
           BOT=/tmp/cc-review-bot; SLICE="$REPO"
           cd "$BOT"; git config user.name "cc-review[bot]"; git config user.email "cc-review[bot]@users.noreply.github.com"
           push_mem() {
-            git fetch origin claude-reviewer/memory 2>/dev/null || true
-            if git rev-parse --verify origin/claude-reviewer/memory >/dev/null 2>&1; then
-              git checkout -B claude-reviewer/memory origin/claude-reviewer/memory
+            # The bot is a shallow single-branch clone (-b rewrite), so
+            # origin/claude-reviewer/memory is NOT a tracking ref — fetch the branch and
+            # key off FETCH_HEAD. checkout -B (force) tolerates the local branch the
+            # pre-fetch step created, so there is no "branch already exists" collision.
+            if git fetch origin claude-reviewer/memory 2>/dev/null; then
+              git checkout -B claude-reviewer/memory FETCH_HEAD
             else
-              git checkout --orphan claude-reviewer/memory; git rm -rf . 2>/dev/null || true
+              git checkout -B claude-reviewer/memory 2>/dev/null || git checkout --orphan claude-reviewer/memory
+              git rm -rf . 2>/dev/null || true
               printf '# cc-review memory\n\nPer-project palace. Each top dir is one consumer repo.\n' > README.md
               git add README.md; git commit -q -m "init memory"
             fi
