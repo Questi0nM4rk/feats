@@ -2,9 +2,9 @@
 
 import { execSync } from "node:child_process";
 
-// User input concatenated straight into a query string.
-export function findUser(db: { query(sql: string): unknown }, name: string) {
-  return db.query("SELECT * FROM users WHERE name = '" + name + "'");
+// Parameterised query — `name` is bound, not interpolated.
+export function findUser(db: { query(sql: string, params: unknown[]): unknown }, name: string) {
+  return db.query("SELECT * FROM users WHERE name = $1", [name]);
 }
 
 // Untrusted path interpolated into a shell command.
