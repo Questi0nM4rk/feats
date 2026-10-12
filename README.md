@@ -2,241 +2,92 @@
 
 # `@questi0nm4rk/feats`
 
-**BDD/Gherkin test framework for Bun** — feature testing with typed step definitions.
+**A BDD runner that turns Gherkin `.feature` files into `bun test` tests, for TypeScript projects on Bun.**
 
 [![npm](https://img.shields.io/npm/v/@questi0nm4rk/feats?color=cb3837&label=npm)](https://www.npmjs.com/package/@questi0nm4rk/feats)
-[![types](https://img.shields.io/npm/types/@questi0nm4rk/feats?color=3178c6)](https://www.npmjs.com/package/@questi0nm4rk/feats)
-[![license](https://img.shields.io/npm/l/@questi0nm4rk/feats?color=blue)](./LICENSE)
 [![CI](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml/badge.svg)](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml)
-[![release](https://img.shields.io/github/v/release/Questi0nM4rk/feats?display_name=tag)](https://github.com/Questi0nM4rk/feats/releases)
+[![license](https://img.shields.io/npm/l/@questi0nm4rk/feats?color=blue)](./LICENSE)
 
 </div>
 
-## Install
-
-```sh
-bun add @questi0nm4rk/feats
-```
-
-## Quick example
-
-**`tests/features/checkout.feature`**
-
 ```gherkin
-Feature: Shopping cart checkout
-
-  Scenario: Add item and checkout
-    Given the cart is empty
-    When I add "Widget" to the cart
-    Then the cart should have 1 item
-    And the total should be 9.99
+Scenario: Add item and checkout
+  Given the cart is empty
+  When I add "Widget" to the cart
+  Then the cart should have 1 item
 ```
 
-**`tests/features/checkout.steps.ts`**
+```ts
+import { Given, loadFeatures, runFeatures } from "@questi0nm4rk/feats";
 
-```typescript
-import { expect } from "bun:test";
-import { Given, When, Then } from "@questi0nm4rk/feats";
+Given("the cart is empty", (world) => { world.items = []; });
 
-interface CartWorld {
-  items: { name: string; price: number }[];
-  [key: string]: unknown;
-}
-
-Given("the cart is empty", (world: CartWorld) => {
-  world.items = [];
-});
-
-When("I add {string} to the cart", (world: CartWorld, name: unknown) => {
-  if (typeof name !== "string") throw new Error("expected string");
-  world.items.push({ name, price: 9.99 });
-});
-
-Then("the cart should have {int} item", (world: CartWorld, count: unknown) => {
-  if (typeof count !== "number") throw new Error("expected number");
-  expect(world.items.length).toBe(count);
-});
-
-Then("the total should be {float}", (world: CartWorld, total: unknown) => {
-  if (typeof total !== "number") throw new Error("expected number");
-  const sum = world.items.reduce((acc, item) => acc + item.price, 0);
-  expect(sum).toBe(total);
-});
+runFeatures(await loadFeatures("tests/features/*.feature"));
 ```
 
-**`tests/features/checkout.test.ts`**
+`bun test` then runs each scenario as a `bun:test` test.
 
-```typescript
-import { loadFeatures, runFeatures } from "@questi0nm4rk/feats";
-import "./checkout.steps";
+## Why it exists
 
-const features = await loadFeatures("tests/features/*.feature");
-runFeatures(features);
-```
+My other tools needed behaviour specs that a person can read, and `bun:test` alone keeps the spec in test names, not in Gherkin. cucumber-js has its own runner on Node, so its results do not appear in `bun test`. This package parses Gherkin with the official parser and turns each scenario into a `bun:test` test, so one command runs everything. It refuses to be a full Cucumber port: no parallelism of its own, no plugin protocol, no report server. It has no reason to exist if `bun test` reads `.feature` files natively.
 
-Run with:
+## Quickstart
+
+Requires Bun 1.3+.
 
 ```sh
+git clone https://github.com/Questi0nM4rk/feats.git && cd feats && bun install --frozen-lockfile
 bun test
 ```
 
-## Exports
+Expected output ends with:
 
-| Export | Description |
-|--------|-------------|
-| `Given`, `When`, `Then`, `Step` | Register step definitions |
-| `defineParameterType` | Register custom cucumber parameter types |
-| `Before`, `After` | Lifecycle hooks (with optional tag filter) |
-| `loadFeatures(glob)` | Parse `.feature` files matching a glob |
-| `parseFeature(source, uri)` | Parse a feature from a string |
-| `runFeatures(features, opts?)` | Generate `bun:test` describe/test blocks |
-| `isDataTable`, `isDocString` | Type guards for step-callback trailing args |
-| `resetFeats` | Clear registry + hooks + parameter types (test isolation) |
-| `clearRegistry`, `clearHooks`, `clearParameterTypeRegistry` | Fine-grained resets |
-| `setupFixture(name, opts)` | Copy a fixture directory to a temp dir |
-| `composeFixtures(names, opts)` | Merge multiple fixture dirs into one temp dir |
-| `runCli(command, args?, opts?)` | Run a CLI process and capture output |
-| `assertConfig(filePath, expected, opts?)` | Assert JSON/TOML/YAML config file contents |
-| `assertOutput(result, expectations)` | Assert CLI output (stdout, stderr, exitCode) |
-| `createRng(seed?)` | Create a seeded deterministic RNG |
-
-## Filtering by tag
-
-Set the `FEATS_TAGS` env var to filter scenarios without changing code:
-
-```sh
-FEATS_TAGS="@smoke" bun test
-FEATS_TAGS="not @slow" bun test
-FEATS_TAGS="(@smoke or @critical) and not @wip" bun test
+```text
+ 389 pass
+ 8 skip
+ 0 fail
+Ran 397 tests across 36 files.
 ```
 
-Tag expressions support `and`, `or`, `not`, and parentheses. The `opts.tagFilter`
-on `runFeatures()` takes precedence if both are set.
+The project tests itself with its own feature file: `tests/features/self-test.feature`. To use it in another project, run `bun add @questi0nm4rk/feats` (see Status for the npm version). Lint and typecheck: `bun run lint` and `bun run typecheck`.
 
-## Better failure messages
+## How it works
 
-When a step has no matching definition, the error includes the feature
-location and a copy-paste-ready snippet with `{string}` / `{int}` / `{float}`
-substituted in for inline literals:
-
-```
-Undefined step at tests/features/checkout.feature:7: "I add \"Widget\" to the cart"
-
-Add a step definition:
-
-When("I add {string} to the cart", async (world, arg1) => {
-  // TODO: implement
-  throw new Error("Not implemented");
-});
+```mermaid
+flowchart LR
+  F[".feature file"] --> P["Gherkin parser"]
+  P --> M["match steps<br/>(cucumber-expressions)"]
+  S["step definitions"] --> M
+  M --> R["runFeatures: describe/test blocks"]
+  R --> B["bun test"]
+  R --> RP["reporters: pretty, JUnit, Cucumber JSON"]
 ```
 
-Ambiguous-step errors get the same location prefix so you can find the
-conflict instantly.
+Everything is deterministic. No part of it calls a model. The parser and the expression matcher are the official `@cucumber/*` packages. This repo adds the registry, the runner, hooks, tag filters, reporters, a `feats` CLI and a Bun plugin that loads `.feature` files as modules. Guide: [docs/guide.md](./docs/guide.md). API: [docs/api.md](./docs/api.md).
 
-## Reporters
+## Numbers
 
-Attach reporters to render results to the console or emit CI artifacts
-(JUnit XML, Cucumber JSON). The quickest path is the env var:
+Measured 2026-10-12 on Arch Linux, Bun 1.3.14.
 
-```bash
-FEATS_REPORTERS=pretty bun test
-FEATS_REPORTERS=junit:reports/junit.xml,cucumber-json:reports/cucumber.json bun test
-```
+| What | Value | How measured |
+| --- | --- | --- |
+| Tests | 389 pass, 8 skip, 0 fail | `bun test` |
+| Test time | 2.4 s wall, 397 tests in 36 files | `time bun test` |
+| Source size | 6,878 lines of TypeScript code (src and tests) | `scc src tests` |
+| Bundle size | 1.0 MB main, 0.4 MB plugin (includes the bundled parser) | `bun run build` |
+| Parser bench | median 1.85 ms, p95 3.94 ms for 100 scenarios | `bun run bench` (30 iterations, parser only) |
 
-Or pass instances explicitly:
+The bench does not measure the runner. Timings do not compare across machines.
 
-```ts
-import { runFeatures, PrettyReporter, JUnitReporter } from "@questi0nm4rk/feats";
+Commits include agent-authored work under my identity; design, orchestration and review are mine.
 
-runFeatures(features, {
-  reporters: [new PrettyReporter(), new JUnitReporter({ outFile: "junit.xml" })],
-});
-```
+## Status
 
-Custom reporters implement any subset of the eight `FeatsReporter`
-callbacks. See [`docs/reporters.md`](./docs/reporters.md) for the contract,
-event order, and built-in reference.
+- **Works:** parsing, step matching, hooks, tag filters, `Rule:`, pending steps, reporters, the `feats` CLI. Covered by the tests above.
+- **Experimental:** the Bun plugin for `.feature` imports.
+- **Tried and dropped:** nothing recorded in the repo. The non-goals are in [docs/plans/roadmap.md](./docs/plans/roadmap.md).
+- **Known gaps:** the repo is at version 1.4.0 and has no git tags or GitHub release. npm has only 1.0.0 and 1.0.1, so the features after 1.0.1 are not on npm. Step arguments arrive as `unknown`, so steps narrow them by hand. No `# language:` support. The bench covers the parser only. Single maintainer.
 
-## Lifecycle hooks
+## License
 
-`Before` / `After` run per scenario (Phase 1). `BeforeAll` / `AfterAll`
-(Phase 2b) run once per `runFeatures()` call:
-
-```ts
-import { BeforeAll, AfterAll } from "@questi0nm4rk/feats";
-
-BeforeAll(async () => { await db.connect(); });
-AfterAll(async () => { await db.disconnect(); });
-```
-
-## Pending steps
-
-A step can declare itself not-yet-implemented without failing the suite:
-
-```ts
-import { pending } from "@questi0nm4rk/feats";
-
-Given("the checkout flow is wired up", () => {
-  pending("not done yet");
-});
-```
-
-Subsequent steps in that scenario render as skipped; reporters see
-`status: "pending"` and `RunSummary.pending` increments.
-
-## Rule:
-
-The parser accepts the Gherkin 6 `Rule:` keyword. Scenarios under a Rule
-appear flat in `feature.scenarios` (so existing code keeps working) with
-a `rule?: { name, tags }` field attached for reporter / filter use. Rule
-tags are inherited by their scenarios for tag filtering — `@critical`
-on a Rule applies to every scenario inside.
-
-```gherkin
-Feature: Checkout
-
-  @critical
-  Rule: Empty carts cost nothing
-    Scenario: Empty cart total is zero
-      Given the cart is empty
-      Then the total is 0
-```
-
-## The `feats` CLI
-
-A standalone binary for running features outside `bun:test`:
-
-```bash
-feats                                            # default globs, Pretty reporter
-feats tests/features/cart.feature --tags @smoke
-feats --reporter junit:reports/junit.xml
-```
-
-`runCore(features, opts)` is exported for programmatic use; it returns
-`{ summary, exitCode }` and never throws. See
-[`docs/cli.md`](./docs/cli.md).
-
-## More docs
-
-- [`docs/cli.md`](./docs/cli.md) — the `feats` CLI + programmatic `runCore`
-- [`docs/reporters.md`](./docs/reporters.md) — reporter contract + built-ins
-- [`docs/parameter-types.md`](./docs/parameter-types.md) — custom Gherkin params
-- [`docs/world.md`](./docs/world.md) — typed worlds, factories, sharing setup
-- [`docs/test-isolation.md`](./docs/test-isolation.md) — registry reset patterns
-- [`docs/assertions.md`](./docs/assertions.md) — `assertConfig` / `assertOutput`
-- [`docs/runCli.md`](./docs/runCli.md) — running CLIs from steps
-- [`docs/bun-plugin.md`](./docs/bun-plugin.md) — `.feature` as importable modules
-
-## Bun plugin
-
-Load `.feature` files directly as JS modules:
-
-```typescript
-// bunfig.toml or Bun.build config
-import featsPlugin from "@questi0nm4rk/feats/plugin";
-
-Bun.build({
-  plugins: [featsPlugin],
-  // ...
-});
-```
+MIT
