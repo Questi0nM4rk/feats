@@ -37,7 +37,7 @@ It has no reason to exist if `bun test` reads `.feature` files natively.
 
 ## Quickstart
 
-Tested on Bun 1.3.14.
+Tested with Bun 1.3.14.
 
 ```sh
 git clone https://github.com/Questi0nM4rk/feats.git && cd feats && bun install --frozen-lockfile
@@ -72,6 +72,7 @@ flowchart LR
 No part of it calls a model.
 The parser and the expression matcher are the official `@cucumber/*` packages.
 This repo adds the registry, the runner, hooks, tag filters, reporters, a `feats` CLI and a Bun plugin that loads `.feature` files as modules.
+Used for tests by [hook-kit](https://github.com/Questi0nM4rk/hook-kit), [ai-guardrails](https://github.com/Questi0nM4rk/ai-guardrails), [tagen](https://github.com/Questi0nM4rk/tagen) and [vori](https://github.com/Questi0nM4rk/vori).
 Guide: [docs/guide.md](./docs/guide.md).
 API: [docs/api.md](./docs/api.md).
 
@@ -95,12 +96,13 @@ Commits include agent-authored work under my identity; design, orchestration and
 
 - **Works:** parsing, step matching, hooks, tag filters, `Rule:`, pending steps, reporters, the `feats` CLI, the Bun plugin for `.feature` imports. Covered by the tests above.
 - **Tried and dropped:** nothing recorded in the repo. The non-goals are in [docs/plans/roadmap.md](./docs/plans/roadmap.md).
-- **Known gaps:** the repo is at version 1.4.0 and has no git tags or GitHub release.
-npm has only 1.0.0 and 1.0.1, so the features after 1.0.1 are not on npm.
-Step arguments arrive as `unknown`, so steps narrow them by hand.
-No `# language:` support.
-The bench covers the parser only.
-Single maintainer.
+- **Known gaps:**
+  - The repo is at version 1.4.0 and has no git tags or GitHub release.
+    npm has only 1.0.0 and 1.0.1, so the features after 1.0.1 are not on npm.
+  - Step arguments arrive as `unknown`, so steps narrow them by hand.
+  - No `# language:` support.
+  - The bench covers the parser only.
+  - Single maintainer.
 
 ## License
 
