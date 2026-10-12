@@ -43,6 +43,8 @@ jobs:
   test:
     name: Test & Coverage
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -54,7 +56,33 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run tests
-        run: bun test --coverage --coverage-threshold=85
+        shell: bash
+        run: |
+          set -o pipefail
+          bun test --coverage --coverage-threshold=85 2>&1 | tee "$RUNNER_TEMP/test.log"
+
+      - name: Publish badges
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/test.log"
+          out="$RUNNER_TEMP/badges"; mkdir -p "$out"
+          badge() { printf '{"schemaVersion":1,"label":"%s","message":"%s","color":"%s"}\n' "$2" "$3" "$4" > "$out/$1.json"; }
+          pass=$(grep -Eo '^ *[0-9]+ pass' "$log" | tail -1 | grep -Eo '[0-9]+' || echo 0)
+          skip=$(grep -Eo '^ *[0-9]+ skip' "$log" | tail -1 | grep -Eo '[0-9]+' || echo 0)
+          fail=$(grep -Eo '^ *[0-9]+ fail' "$log" | tail -1 | grep -Eo '[0-9]+' || echo 0)
+          color=brightgreen; [ "$fail" != 0 ] && color=red
+          badge tests tests "$pass passed, $skip skipped, $fail failed" "$color"
+          cd "$out"
+          git init -q -b badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "badges for ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
 
   publish-dry-run:
     name: Publish (dry run)

@@ -6,6 +6,7 @@
 
 [![npm](https://img.shields.io/npm/v/@questi0nm4rk/feats?color=cb3837&label=npm)](https://www.npmjs.com/package/@questi0nm4rk/feats)
 [![CI](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml/badge.svg)](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml)
+[![tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Questi0nM4rk/feats/badges/tests.json&style=flat-square)](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml)
 [![license](https://img.shields.io/github/license/Questi0nM4rk/feats?color=blue)](./LICENSE)
 
 </div>
@@ -37,21 +38,12 @@ It has no reason to exist if `bun test` reads `.feature` files natively.
 
 ## Quickstart
 
-Tested with Bun 1.3.14.
-
 ```sh
 git clone https://github.com/Questi0nM4rk/feats.git && cd feats && bun install --frozen-lockfile
 bun test
 ```
 
-Expected output ends with:
-
-```text
- 389 pass
- 8 skip
- 0 fail
-Ran 397 tests across 36 files.
-```
+Expected output ends with `0 fail`.
 
 The project tests itself with its own feature file: `tests/features/self-test.feature`.
 To use it in another project, run `bun add @questi0nm4rk/feats` (see Status for the npm version).
@@ -78,15 +70,15 @@ API: [docs/api.md](./docs/api.md).
 
 ## Numbers
 
-Measured 2026-10-12 on Arch Linux, Bun 1.3.14.
+[![tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Questi0nM4rk/feats/badges/tests.json&style=flat-square)](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml)
 
-| What | Value | How measured |
-| --- | --- | --- |
-| Tests | 389 pass, 8 skip, 0 fail | `bun test` |
-| Test time | 2.4 s wall, 397 tests in 36 files | `time bun test` |
-| Source size | 6,878 lines of TypeScript code (src and tests) | `scc src tests` |
-| Bundle size | 1.0 MB main, 0.4 MB plugin (includes the bundled parser) | `bun run build` |
-| Parser bench | median 1.9 to 2.8 ms, p95 3.9 to 6.1 ms for 100 scenarios (5 runs) | `bun run bench` (30 iterations, parser only) |
+| What | How to measure |
+| --- | --- |
+| Tests | `bun test` |
+| Test time | `time bun test` |
+| Source size | `scc src tests` |
+| Bundle size | `bun run build` |
+| Parser bench | `bun run bench` (parser only) |
 
 The bench does not measure the runner. Bench numbers vary between runs and do not compare across machines.
 
@@ -97,8 +89,8 @@ Commits include agent-authored work under my identity; design, orchestration and
 - **Works:** parsing, step matching, hooks, tag filters, `Rule:`, pending steps, reporters, the `feats` CLI, the Bun plugin for `.feature` imports. Covered by the tests above.
 - **Tried and dropped:** nothing recorded in the repo. The non-goals are in [docs/plans/roadmap.md](./docs/plans/roadmap.md).
 - **Known gaps:**
-  - The repo is at version 1.4.0 and has no git tags or GitHub release.
-    npm has only 1.0.0 and 1.0.1, so the features after 1.0.1 are not on npm.
+  - The repo has no git tags or GitHub release yet.
+    The package version in `package.json` is ahead of npm, so the newest features are not on npm.
   - Step arguments arrive as `unknown`, so steps narrow them by hand.
   - No `# language:` support.
   - The bench covers the parser only.
