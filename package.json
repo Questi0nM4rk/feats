@@ -2,7 +2,7 @@
   "name": "@questi0nm4rk/feats",
   "version": "1.4.0",
   "description": "BDD/Gherkin test framework for Bun — feature testing with typed step definitions",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "homepage": "https://github.com/Questi0nM4rk/feats#readme",
   "bugs": {
     "url": "https://github.com/Questi0nM4rk/feats/issues"

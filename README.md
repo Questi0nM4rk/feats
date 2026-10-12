@@ -6,7 +6,7 @@
 
 [![npm](https://img.shields.io/npm/v/@questi0nm4rk/feats?color=cb3837&label=npm)](https://www.npmjs.com/package/@questi0nm4rk/feats)
 [![CI](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml/badge.svg)](https://github.com/Questi0nM4rk/feats/actions/workflows/check.yml)
-[![license](https://img.shields.io/npm/l/@questi0nm4rk/feats?color=blue)](./LICENSE)
+[![license](https://img.shields.io/github/license/Questi0nM4rk/feats?color=blue)](./LICENSE)
 
 </div>
 
@@ -106,4 +106,6 @@ Commits include agent-authored work under my identity; design, orchestration and
 
 ## License
 
-MIT
+MPL-2.0.
+
+Releases published before 2026-10-12 remain available under MIT.
