@@ -30,9 +30,9 @@ jobs:
       - name: Check tag matches package.json version
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          pkg=$(jq -r '.version' package.json)
-          if [ "$tag" != "$pkg" ]; then
-            echo "::error::tag v$tag does not match package.json version $pkg"
+          version="$(jq -r .version package.json)"
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $version" >&2
             exit 1
           fi
 
@@ -49,14 +49,6 @@ jobs:
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
-
-      - name: Ensure npm 11.5.1 or newer
-        # Trusted publishing needs npm 11.5.1 or newer; install latest only when the bundled npm is older.
-        run: |
-          if [ "$(printf '%s\n' 11.5.1 "$(npm --version)" | sort -V | head -n1)" != "11.5.1" ]; then
-            npm install -g npm@latest
-          fi
-          npm --version
 
       - name: Publish
         run: npm publish --access public --provenance
