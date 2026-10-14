@@ -1,6 +1,8 @@
 # Publishes @questi0nm4rk/feats to npm when a v* tag is pushed.
 # Auth is npm trusted publishing (OIDC): no npm token, no secret. The package's
-# trusted publisher on npmjs.com is registered with this file name, release.yml.
+# trusted publisher on npmjs.com is registered with this file name, release.yml,
+# and is stage-only. The version goes to the npm stage queue; a maintainer
+# approves it on npmjs.com (2FA) before it is live.
 name: Release
 
 on:
@@ -50,5 +52,9 @@ jobs:
           node-version: "24"
           registry-url: https://registry.npmjs.org
 
-      - name: Publish
-        run: npm publish --access public --provenance
+      # npm stage needs npm 11.15.0 or newer; setup-node's node 24 bundles 11.11.0
+      - name: Upgrade npm
+        run: npm install -g npm@^11.15.0
+
+      - name: Stage for publish
+        run: npm stage publish --access public --provenance
