@@ -90,8 +90,8 @@ Commits include agent-authored work under my identity; design, orchestration and
 - **Tried and dropped:** nothing recorded in the repo. The non-goals are in [docs/plans/roadmap.md](./docs/plans/roadmap.md).
 - **Known gaps:**
   - The repo has no git tags or GitHub release yet.
-    A `v*` tag stages the version in the npm queue; a maintainer approves it on npmjs.com (2FA) before it is live.
     The package version in `package.json` is ahead of npm, so the newest features are not on npm.
+    A `v*` tag will stage the version in the npm queue; a maintainer approves it on npmjs.com (2FA) before it is live.
   - Step arguments arrive as `unknown`, so steps narrow them by hand.
   - No `# language:` support.
   - The bench covers the parser only.
